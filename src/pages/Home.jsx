@@ -5,7 +5,6 @@ export default function Home({ onSelectApp }) {
   return (
     <div className="home-container">
       <h3>会津地区経営者協会様向け サンプルサイト</h3>
-      <h1>ご利用のツールをお選びください</h1>
 
       <div className="app-grid">
         {/* 🟦 産学懇話会ツール */}
