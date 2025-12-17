@@ -3,11 +3,12 @@ import { Stack, TextField, Button, Box } from "@mui/material";
 import QrSection from "./QrSection";
 import DateTimeInput from "./DateTimeInput";
 import DeadDateTimeInput from "./DeadDateTimeInput";
+import dayjs from "dayjs";
 
 export default function FormEditor() {
   const [formData, setFormData] = useState({
     title: "会津産学懇話会10月定例会",
-    datetime: new Date(2025, 11, 25, 15, 0),
+    datetime: dayjs("2025-12-25 15:00"),
     deadline: null,
     place: "会津若松ワシントンホテル",
     host: "会津産学懇話会",

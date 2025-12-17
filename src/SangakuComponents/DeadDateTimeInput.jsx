@@ -1,35 +1,18 @@
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import jaLocale from "date-fns/locale/ja";
+// src/SangakuComponents/DeadDateTimeInput.jsx
+import { DatePicker } from "antd";
+import locale from "antd/es/date-picker/locale/ja_JP";
+import "antd/dist/reset.css";
 
-export default function DeadDateInput({ value, onChange }) {
+export default function DeadDateTimeInput({ value, onChange }) {
   return (
-    <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={jaLocale}>
-      <DatePicker
-        label="〆切日を選択"
-        value={value}
-        onChange={onChange}
-        format="yyyy/MM/dd（EEE）"
-        slotProps={{
-          textField: {
-            fullWidth: true,
-            inputProps: { readOnly: true },
-            sx: {
-              backgroundColor: "#f9fafb",
-              borderRadius: "10px",
-              "& .MuiOutlinedInput-input": {
-                fontSize: "1.1rem",
-                padding: "1rem",
-              },
-              "& .MuiInputLabel-root": {
-                fontSize: "1rem",
-                color: "#555",
-              },
-            },
-          },
-        }}
-      />
-    </LocalizationProvider>
+    <DatePicker
+      locale={locale}
+      showTime={{ minuteStep: 30 }}
+      format="YYYY/MM/DD（ddd）HH:mm"
+      value={value}
+      onChange={onChange}
+      style={{ width: "100%" }}
+      placeholder="締切日時を選択"
+    />
   );
 }

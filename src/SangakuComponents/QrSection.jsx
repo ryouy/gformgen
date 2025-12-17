@@ -1,5 +1,6 @@
+// src/SangakuComponents/QrSection.jsx
 import { motion } from "framer-motion";
-import QRCode from "react-qr-code";
+import { QRCodeCanvas } from "qrcode.react";
 
 export default function QrSection({ formUrl }) {
   if (!formUrl) return null;
@@ -9,24 +10,12 @@ export default function QrSection({ formUrl }) {
       className="qr-section"
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: "easeOut" }}
     >
-      <div className="qr-inner">
-        {/* QRコード */}
-        <div
-          style={{
-            background: "white",
-            padding: "16px",
-            borderRadius: "12px",
-          }}
-        >
-          <QRCode value={formUrl} size={180} />
-        </div>
-
-        {/* リンク */}
+      <div style={{ textAlign: "center" }}>
+        <QRCodeCanvas value={formUrl} size={180} />
         <p style={{ marginTop: "1rem" }}>
           <a href={formUrl} target="_blank" rel="noopener noreferrer">
-            フォーム確認はこちら
+            フォームを開く
           </a>
         </p>
       </div>
