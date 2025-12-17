@@ -1,15 +1,34 @@
 import { motion } from "framer-motion";
 import "../App.css";
 
-export default function Home({ onSelectApp }) {
+export default function Home({ onSelectApp, isLoggedIn, onLogin, onLogout }) {
   return (
     <div className="home-container">
+      {/* 🔐 ログインバー */}
+      <div className="login-bar">
+        {isLoggedIn ? (
+          <>
+            <span className="login-status">管理者ログイン中</span>
+            <button className="logout-button" onClick={onLogout}>
+              ログアウト
+            </button>
+          </>
+        ) : (
+          <button className="login-button" onClick={onLogin}>
+            Googleでログイン
+          </button>
+        )}
+      </div>
+
       <h3>会津地区経営者協会様向け サンプルサイト</h3>
 
       <div className="app-grid">
         {/* 🟦 産学懇話会ツール */}
         <div className="app-item">
-          <div className="app-card" onClick={() => onSelectApp("sangaku")}>
+          <div
+            className={`app-card ${!isLoggedIn ? "disabled" : ""}`}
+            onClick={() => isLoggedIn && onSelectApp("sangaku")}
+          >
             <h2>産学懇話会用ツール</h2>
           </div>
           <div className="app-info">
@@ -24,7 +43,10 @@ export default function Home({ onSelectApp }) {
 
         {/* 🟩 その他会合ツール */}
         <div className="app-item">
-          <div className="app-card" onClick={() => onSelectApp("other")}>
+          <div
+            className={`app-card ${!isLoggedIn ? "disabled" : ""}`}
+            onClick={() => isLoggedIn && onSelectApp("other")}
+          >
             <h2>その他会合用ツール</h2>
           </div>
           <div className="app-info">

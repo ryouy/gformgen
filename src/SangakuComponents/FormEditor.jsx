@@ -4,7 +4,7 @@ import QrSection from "./QrSection";
 import DateTimeInput from "./DateTimeInput";
 import DeadDateTimeInput from "./DeadDateTimeInput";
 
-export default function FormEditor() {
+export default function FormEditor({ onFormCreated }) {
   const [formData, setFormData] = useState({
     title: "会津産学懇話会10月定例会",
     datetime: null,
@@ -15,17 +15,52 @@ export default function FormEditor() {
   });
 
   const [qrVisible, setQrVisible] = useState(false);
+  const [formUrl, setFormUrl] = useState(null);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
   };
 
-  const handleCreate = () => setQrVisible(true);
+  // ✅ フォーム作成（API連携）
+  const handleCreate = async () => {
+    try {
+      const res = await fetch("http://localhost:3000/api/forms/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: formData.title,
+          content: formData.content,
+          datetime: formData.datetime ? formData.datetime.toISOString() : null,
+          deadline: formData.deadline ? formData.deadline.toISOString() : null,
+          place: formData.place,
+          host: formData.host,
+        }),
+      });
+
+      const data = await res.json();
+      console.log("フォーム作成結果:", data);
+
+      // 親（AppMain）に通知
+      if (onFormCreated) {
+        onFormCreated(data.formUrl);
+      }
+
+      // 自分でも保持（QR表示用）
+      setFormUrl(data.formUrl);
+      setQrVisible(true);
+    } catch (err) {
+      console.error("フォーム作成失敗", err);
+      alert("フォーム作成に失敗しました");
+    }
+  };
 
   return (
     <div className="form-grid-wrapper">
       <h2>フォームに必要な情報を入力してください</h2>
+
       <div className="form-grid mui-form">
         <Stack spacing={2}>
           <TextField
@@ -37,7 +72,7 @@ export default function FormEditor() {
             fullWidth
           />
 
-          {/* ✅ 日時入力を横並びに配置 */}
+          {/* 日時入力 */}
           <Box
             sx={{
               display: "flex",
@@ -89,7 +124,7 @@ export default function FormEditor() {
             fullWidth
           />
 
-          {/* ✅ フォーム作成ボタン */}
+          {/* フォーム作成ボタン */}
           <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
             <Button
               variant="contained"
@@ -116,10 +151,10 @@ export default function FormEditor() {
         </Stack>
       </div>
 
-      {/* ✅ QRコード */}
-      {qrVisible && (
+      {/* QRコード表示 */}
+      {qrVisible && formUrl && (
         <div className="form-side center-qr">
-          <QrSection />
+          <QrSection formUrl={formUrl} />
         </div>
       )}
     </div>

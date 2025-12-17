@@ -1,7 +1,9 @@
 import { motion } from "framer-motion";
-import qrImage from "../assets/qr.png";
+import QRCode from "react-qr-code";
 
-export default function QrSection() {
+export default function QrSection({ formUrl }) {
+  if (!formUrl) return null;
+
   return (
     <motion.div
       className="qr-section"
@@ -10,13 +12,20 @@ export default function QrSection() {
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
       <div className="qr-inner">
-        <img src={qrImage} alt="QRコード" />
-        <p>
-          <a
-            href="https://forms.gle/HPK3QR4DMDcm6AQg6"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+        {/* QRコード */}
+        <div
+          style={{
+            background: "white",
+            padding: "16px",
+            borderRadius: "12px",
+          }}
+        >
+          <QRCode value={formUrl} size={180} />
+        </div>
+
+        {/* リンク */}
+        <p style={{ marginTop: "1rem" }}>
+          <a href={formUrl} target="_blank" rel="noopener noreferrer">
             フォーム確認はこちら
           </a>
         </p>
