@@ -8,7 +8,11 @@ export default function DateTimeInput({ value, onChange }) {
     <DatePicker
       locale={locale}
       showTime={{
-        minuteStep: 30,
+        minuteStep: 15,
+
+        // ★ 範囲外の時間を「非表示」にする
+        hideDisabledOptions: true,
+
         disabledTime: () => ({
           disabledHours: () =>
             Array.from({ length: 24 }, (_, i) => i).filter(
