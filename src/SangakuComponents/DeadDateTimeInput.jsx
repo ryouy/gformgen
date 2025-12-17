@@ -1,14 +1,17 @@
-// src/SangakuComponents/DeadDateTimeInput.jsx
 import { DatePicker } from "antd";
 import locale from "antd/es/date-picker/locale/ja_JP";
+import dayjs from "dayjs";
+import "dayjs/locale/ja"; // ★ これが重要
 import "antd/dist/reset.css";
+
+dayjs.locale("ja"); // ★ dayjs に日本語を設定
 
 export default function DeadDateTimeInput({ value, onChange }) {
   return (
     <DatePicker
       locale={locale}
       showTime={{ minuteStep: 30 }}
-      format="YYYY/MM/DD（ddd）HH:mm"
+      format="締切：YYYY/MM/DD（ddd）HH:mm"
       value={value}
       onChange={onChange}
       style={{ width: "100%" }}

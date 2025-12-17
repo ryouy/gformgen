@@ -12,7 +12,7 @@ export default function DateTimeInput({ value, onChange }) {
         disabledTime: () => ({
           disabledHours: () =>
             Array.from({ length: 24 }, (_, i) => i).filter(
-              (h) => h < 9 || h > 17
+              (h) => h < 8 || h > 20
             ),
         }),
       }}
