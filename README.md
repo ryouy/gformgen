@@ -2,6 +2,8 @@
 
 会津地区経営者協会向けに用意したフォーム作成 / 集計ツールのサンプルプロジェクトです。React + Vite で構築した SPA で、Vercel 上にホスティング済み。トップページから「産学懇話会用」「その他会合用」の 2 アプリを選び、会合向けのフォーム作成と参加者集計・帳票出力を行えます。
 
+[公開サイト](https://gformgen.vercel.app/)
+
 ## 主な機能
 
 - **フォーム作成 UI**：MUI および MUI X Date/DateTime Picker を用い、会合名・日時・場所・主催者・本文を入力可能。作成ボタンで QR コードと Google Forms へのリンクが表示されます。
@@ -44,8 +46,8 @@ npm run dev
 
 ## 使い方
 
-1. ブラウザで `http://localhost:5173` または Vercel で公開している URL を開きます。
-2. 画面上部の「Googleでログイン」をクリックすると、`/auth/google` → `/auth/google/callback` (backend) を経由して Google OAuth へ遷移。承認後は `?login=success` 付きで SPA に戻り、ログイン状態が localStorage に保持されます。
+1. ブラウザで `http://localhost:5173` または Vercel で公開している[公開サイト](https://gformgen.vercel.app/)を開きます。
+2. 画面上部の「Google でログイン」をクリックすると、`/auth/google` → `/auth/google/callback` (backend) を経由して Google OAuth へ遷移。承認後は `?login=success` 付きで SPA に戻り、ログイン状態が localStorage に保持されます。
 3. 「産学懇話会用ツール」または「その他会合用ツール」を選択。どちらもフォーム作成／集計タブで構成され、右上のホームボタンでトップに戻ってもログイン状態は維持されます。
 4. フォーム作成タブで会合情報を入力し「フォームを作成」を押すと、Google Forms API によって実フォームを作成。QR コードとリンクから確認できます。
 5. 集計タブでは参加者テーブルや出席者リストを閲覧し、PDF ダウンロードボタンで帳票を取得できます。リストは「もっと見る」で全件展開可。
