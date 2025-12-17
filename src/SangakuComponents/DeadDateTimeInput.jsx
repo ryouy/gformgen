@@ -10,8 +10,7 @@ export default function DeadDateTimeInput({ value, onChange }) {
   return (
     <DatePicker
       locale={locale}
-      showTime={{ minuteStep: 30 }}
-      format="締切：YYYY/MM/DD（ddd）HH:mm"
+      format="締切：YYYY/MM/DD（ddd）"
       value={value}
       onChange={onChange}
       style={{ width: "100%" }}
