@@ -83,6 +83,8 @@ app.post("/api/forms/create", async (req, res) => {
 
     const { title, content, datetime, deadline, place, host } = req.body;
 
+    const formTitle = title ? `${title} 出席通知書` : "出席通知書";
+
     console.log("受け取ったフォームデータ:", req.body);
 
     /* =========================
@@ -95,7 +97,7 @@ ${title} 出席通知書
 下記のとおり【${title}】を開催いたします。
 ご出欠につきまして、以下のフォームよりご回答くださいますようお願い申し上げます。
 
-【会合情報】
+ 会合情報
 【主催者】： ${host}
 【日時】： ${formatDateJP(datetime, true)}
 【場所】： ${place}
@@ -121,7 +123,7 @@ ${title} 出席通知書
     const createResult = await forms.forms.create({
       requestBody: {
         info: {
-          title,
+          title: formTitle,
         },
       },
     });
@@ -241,6 +243,14 @@ ${title} 出席通知書
     console.error(err);
     res.status(500).json({ error: "Failed to create form" });
   }
+});
+
+/* =========================
+   ログアウト（トークン破棄）
+========================= */
+app.post("/auth/logout", (req, res) => {
+  savedTokens = null;
+  res.json({ success: true });
 });
 
 /* =========================

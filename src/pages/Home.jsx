@@ -32,11 +32,12 @@ export default function Home({ onSelectApp, isLoggedIn, onLogin, onLogout }) {
             <h2>産学懇話会用ツール</h2>
           </div>
           <div className="app-info">
-            <p>最終更新日：2025年12月18日</p>
+            <p>最終更新日：2025年12月13日</p>
             <ul>
-              <li>日付選択UIをMUI X Pickerに刷新</li>
+              <li>管理者ログイン制御を追加</li>
+              <li>Googleフォーム自動生成に対応</li>
+              <li>QRコード表示・配布対応</li>
               <li>集計リストをPDF出力対応</li>
-              <li>デモテーブルデータの修正</li>
             </ul>
           </div>
         </div>

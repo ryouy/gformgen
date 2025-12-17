@@ -5,15 +5,12 @@ import "../App.css";
 import FormEditor from "./FormEditor";
 import StatsViewer from "./StatsViewer";
 
-export default function App({ onGoHome }) {
+export default function App() {
   const [activeTab, setActiveTab] = useState("form");
 
   const handleGoHome = () => {
-    if (onGoHome) {
-      onGoHome();
-    } else {
-      window.location.href = "/";
-    }
+    // ホームページに戻る処理（ルートを持つ場合は navigate("/") など）
+    window.location.href = "/"; // 例: ルート直下に戻る
   };
 
   return (

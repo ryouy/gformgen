@@ -7,7 +7,7 @@ import DeadDateTimeInput from "./DeadDateTimeInput";
 export default function FormEditor() {
   const [formData, setFormData] = useState({
     title: "会津産学懇話会10月定例会",
-    datetime: null,
+    datetime: new Date(2025, 11, 25, 15, 0),
     deadline: null,
     place: "会津若松ワシントンホテル",
     host: "会津産学懇話会",
@@ -119,7 +119,7 @@ export default function FormEditor() {
       {/* ✅ QRコード */}
       {qrVisible && (
         <div className="form-side center-qr">
-          <QrSection />
+          <QrSection formUrl={formUrl} />
         </div>
       )}
     </div>
