@@ -30,7 +30,10 @@ app.get("/auth/google", (req, res) => {
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
-    scope: ["https://www.googleapis.com/auth/forms.body"],
+    scope: [
+      "https://www.googleapis.com/auth/forms.body",
+      "https://www.googleapis.com/auth/drive.file",
+    ],
   });
   res.redirect(authUrl);
 });
@@ -50,12 +53,16 @@ app.get("/auth/google/callback", async (req, res) => {
     res.status(500).send("OAuth failed");
   }
 });
+
+/* =========================
+   日付日本語整形
+========================= */
 const formatDateJP = (isoString, withTime = false) => {
   if (!isoString) return "";
 
   const d = new Date(isoString);
-
   const week = ["日", "月", "火", "水", "木", "金", "土"];
+
   const y = d.getFullYear();
   const m = d.getMonth() + 1;
   const day = d.getDate();
@@ -83,29 +90,26 @@ app.post("/api/forms/create", async (req, res) => {
 
     const { title, content, datetime, deadline, place, host } = req.body;
 
+    // ★ Drive / Forms に表示される最終タイトル
     const formTitle = title ? `${title} 出席通知書` : "出席通知書";
 
     console.log("受け取ったフォームデータ:", req.body);
 
     /* =========================
-       説明文（通知文）生成
+       説明文（通知文）
     ========================= */
     const description = `
-${title} 出席通知書
+${formTitle}
 
 平素より当協会の活動にご理解とご協力を賜り、誠にありがとうございます。
 下記のとおり【${title}】を開催いたします。
 ご出欠につきまして、以下のフォームよりご回答くださいますようお願い申し上げます。
 
- 会合情報
-【主催者】： ${host}
-【日時】： ${formatDateJP(datetime, true)}
-【場所】： ${place}
-【〆切】： ${formatDateJP(deadline)}
-
-平素より当協会の活動にご理解とご協力を賜り、誠にありがとうございます。
-下記のとおり定例会を開催いたします。
-ご出欠につきまして、以下のフォームよりご回答くださいますようお願い申し上げますします。
+【会合情報】
+・主催者： ${host}
+・日時： ${formatDateJP(datetime, true)}
+・場所： ${place}
+・〆切： ${formatDateJP(deadline)}
 
 【お問い合わせ先】
 会津産学懇話会 事務局
@@ -118,32 +122,34 @@ ${title} 出席通知書
     });
 
     /* =========================
-       フォーム作成
+       ① フォーム作成（仮）
     ========================= */
     const createResult = await forms.forms.create({
       requestBody: {
         info: {
-          title: formTitle,
+          title: formTitle, // 仮でもOK
         },
       },
     });
 
     const formId = createResult.data.formId;
+    const responderUri = createResult.data.responderUri;
 
     /* =========================
-       質問追加
+       ② batchUpdate（★ここが重要）
     ========================= */
     await forms.forms.batchUpdate({
       formId,
       requestBody: {
         requests: [
-          // ★ 説明文を設定（B）
+          // ★ タイトル + 説明文を明示的に更新
           {
             updateFormInfo: {
               info: {
+                title: formTitle,
                 description,
               },
-              updateMask: "description",
+              updateMask: "title,description",
             },
           },
 
@@ -235,9 +241,24 @@ ${title} 出席通知書
       },
     });
 
+    const drive = google.drive({
+      version: "v3",
+      auth: oauth2Client,
+    });
+
+    await drive.files.update({
+      fileId: formId,
+      requestBody: {
+        name: formTitle,
+      },
+    });
+
+    /* =========================
+       フロントへ返却
+    ========================= */
     res.json({
       formId,
-      formUrl: createResult.data.responderUri,
+      formUrl: responderUri,
     });
   } catch (err) {
     console.error(err);
@@ -246,7 +267,7 @@ ${title} 出席通知書
 });
 
 /* =========================
-   ログアウト（トークン破棄）
+   ログアウト
 ========================= */
 app.post("/auth/logout", (req, res) => {
   savedTokens = null;

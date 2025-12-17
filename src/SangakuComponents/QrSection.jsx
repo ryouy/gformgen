@@ -15,7 +15,7 @@ export default function QrSection({ formUrl }) {
         <QRCodeCanvas value={formUrl} size={180} />
         <p style={{ marginTop: "1rem" }}>
           <a href={formUrl} target="_blank" rel="noopener noreferrer">
-            フォームを開く
+            フォームを確認
           </a>
         </p>
       </div>

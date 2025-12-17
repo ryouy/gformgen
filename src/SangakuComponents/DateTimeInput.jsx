@@ -19,7 +19,7 @@ export default function DateTimeInput({ value, onChange }) {
       format="YYYY/MM/DD（ddd）HH:mm"
       value={value}
       onChange={onChange}
-      style={{ width: "100%" }}
+      style={{ width: "100%", height: 50 }}
       placeholder="開催日時を選択"
     />
   );
