@@ -3,14 +3,15 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  min-height: 100%;
+  background: #f6f8fb; /* どこかが透けても黒が出ないように */
 }
 
 /* ---- リンク ---- */
@@ -31,7 +32,11 @@ body {
   width: 100%;
   height: 100%;
   display: block; /* ← flexを削除 */
-  background: #f6f8fb; /* 明るい背景に統一（App.cssに合わせるなら） */
+  background: transparent; /* App.cssのbody背景（グラデ）を優先 */
+}
+
+#root {
+  min-height: 100vh;
 }
 
 /* ---- 見出し ---- */

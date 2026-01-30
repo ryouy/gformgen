@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Stack, TextField, Button, Box } from "@mui/material";
-import QrSection from "./QrSection";
 import DateTimeInput from "./DateTimeInput";
 import DeadDateTimeInput from "./DeadDateTimeInput";
 import dayjs from "dayjs";
+import qrImage from "../assets/qr.png";
+
+const DEMO_FORM_URL = "https://forms.gle/HPK3QR4DMDcm6AQg6";
 
 export default function FormEditor() {
   const [formData, setFormData] = useState({
@@ -90,39 +92,57 @@ export default function FormEditor() {
             fullWidth
           />
 
-          {/* ✅ フォーム作成ボタン */}
-          <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
-            <Button
-              variant="contained"
-              size="large"
-              sx={{
-                background: "#3b82f6",
-                borderRadius: "10px",
-                fontSize: "1.05rem",
-                padding: "0.8rem 2rem",
-                width: "fit-content",
-                minWidth: "220px",
-                boxShadow: "0 4px 12px rgba(79,70,229,0.25)",
-                transition: "all 0.3s ease",
-                "&:hover": {
-                  background: "#4338ca",
-                  transform: "translateY(-2px)",
-                },
-              }}
-              onClick={handleCreate}
-            >
-              フォームを作成
-            </Button>
+          {/* ✅ 画面下部：作成ボタン + QR + 確認ボタン（横並び） */}
+          <div className="form-bottom-bar">
+            <div className="form-bottom-actions">
+              <Button
+                variant="contained"
+                size="large"
+                onClick={handleCreate}
+                className="action-btn action-primary"
+                disableElevation
+              >
+                フォームを作成
+              </Button>
+
+              {qrVisible ? (
+                <Button
+                  variant="outlined"
+                  size="large"
+                  component="a"
+                  href={DEMO_FORM_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="action-btn action-secondary"
+                >
+                  フォームを確認
+                </Button>
+              ) : (
+                <Button
+                  variant="outlined"
+                  size="large"
+                  disabled
+                  className="action-btn action-secondary"
+                >
+                  フォームを確認
+                </Button>
+              )}
+            </div>
+
+            <div className={`qr-inline ${qrVisible ? "" : "is-placeholder"}`}>
+              {qrVisible ? (
+                <img
+                  src={qrImage}
+                  alt="QRコード"
+                  style={{ width: 95, height: 95, borderRadius: 12 }}
+                />
+              ) : (
+                <div className="qr-placeholder" aria-hidden="true" />
+              )}
+            </div>
           </div>
         </Stack>
       </div>
-
-      {/* ✅ QRコード */}
-      {qrVisible && (
-        <div className="form-side center-qr">
-          <QrSection formUrl={formUrl} />
-        </div>
-      )}
     </div>
   );
 }

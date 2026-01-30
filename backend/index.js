@@ -2,12 +2,14 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import { google } from "googleapis";
+import { logEvent, requestLogger, readRecentLogLines } from "./logger.js";
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(requestLogger);
 
 const PORT = 3000;
 
@@ -47,9 +49,16 @@ app.get("/auth/google/callback", async (req, res) => {
     savedTokens = tokens;
     oauth2Client.setCredentials(tokens);
 
+    void logEvent({
+      type: "oauth_success",
+    });
     res.redirect("http://localhost:5173/?login=success");
   } catch (err) {
     console.error(err);
+    void logEvent({
+      type: "oauth_error",
+      message: err?.message || String(err),
+    });
     res.status(500).send("OAuth failed");
   }
 });
@@ -83,6 +92,10 @@ const formatDateJP = (isoString, withTime = false) => {
 app.post("/api/forms/create", async (req, res) => {
   try {
     if (!savedTokens) {
+      void logEvent({
+        type: "forms_create_rejected",
+        reason: "not_logged_in",
+      });
       return res.status(401).json({ error: "Not logged in" });
     }
 
@@ -94,6 +107,14 @@ app.post("/api/forms/create", async (req, res) => {
     const formTitle = title ? `${title} 出席通知書` : "出席通知書";
 
     console.log("受け取ったフォームデータ:", req.body);
+    void logEvent({
+      type: "forms_create_requested",
+      // Avoid PII-heavy payloads; keep only high-level fields.
+      formTitle,
+      hasContent: Boolean(content),
+      hasDatetime: Boolean(datetime),
+      hasDeadline: Boolean(deadline),
+    });
 
     /* =========================
        説明文（通知文）
@@ -256,21 +277,42 @@ ${formTitle}
     /* =========================
        フロントへ返却
     ========================= */
+    void logEvent({
+      type: "forms_create_succeeded",
+      formId,
+    });
     res.json({
       formId,
       formUrl: responderUri,
     });
   } catch (err) {
     console.error(err);
+    void logEvent({
+      type: "forms_create_failed",
+      message: err?.message || String(err),
+    });
     res.status(500).json({ error: "Failed to create form" });
   }
 });
+
+/* =========================
+   デバッグ用：最近のログ取得（任意）
+   ENABLE_LOG_API=true の時のみ有効化
+========================= */
+if (process.env.ENABLE_LOG_API === "true") {
+  app.get("/api/logs/recent", async (req, res) => {
+    const limit = Number(req.query.limit ?? 200);
+    const events = await readRecentLogLines(limit);
+    res.json({ events });
+  });
+}
 
 /* =========================
    ログアウト
 ========================= */
 app.post("/auth/logout", (req, res) => {
   savedTokens = null;
+  void logEvent({ type: "logout" });
   res.json({ success: true });
 });
 

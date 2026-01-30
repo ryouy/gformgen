@@ -2,10 +2,10 @@
 import { useState } from "react";
 import { Stack, TextField, Button, Box } from "@mui/material";
 import dayjs from "dayjs";
+import { QRCodeCanvas } from "qrcode.react";
 
 import DateTimeInput from "./DateTimeInput";
 import DeadDateTimeInput from "./DeadDateTimeInput";
-import QrSection from "./QrSection";
 
 const DEADLINE_DAYS_BEFORE = 2; // ← 締切は◯日前
 
@@ -49,6 +49,7 @@ export default function FormEditor() {
   const handleCreate = async () => {
     setLoading(true);
     setError(null);
+    setFormUrl(null); // 連打/再作成時に古いQRが残らないようにする
 
     try {
       const res = await fetch("http://localhost:3000/api/forms/create", {
@@ -127,28 +128,58 @@ export default function FormEditor() {
             fullWidth
           />
 
-          <div style={{ textAlign: "center", marginTop: "1.5rem" }}>
-            <Button
-              variant="contained"
-              size="large"
-              onClick={handleCreate}
-              disabled={loading}
-            >
-              {loading ? "作成中..." : "フォームを作成"}
-            </Button>
-          </div>
-
           {error && (
             <p style={{ color: "red", textAlign: "center" }}>{error}</p>
           )}
+
+          {/* ✅ 画面下部：作成ボタン + QR + 確認ボタン（横並び） */}
+          <div className="form-bottom-bar">
+            <div className="form-bottom-actions">
+              <Button
+                variant="contained"
+                size="large"
+                onClick={handleCreate}
+                disabled={loading}
+                disableElevation
+                className="action-btn action-primary"
+              >
+                {loading ? "作成中..." : "フォームを作成"}
+              </Button>
+
+              {formUrl ? (
+                <Button
+                  variant="outlined"
+                  size="large"
+                  component="a"
+                  href={formUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="action-btn action-secondary"
+                >
+                  フォームを確認
+                </Button>
+              ) : (
+                <Button
+                  variant="outlined"
+                  size="large"
+                  disabled
+                  className="action-btn action-secondary"
+                >
+                  フォームを確認
+                </Button>
+              )}
+            </div>
+
+            <div className={`qr-inline ${formUrl ? "" : "is-placeholder"}`}>
+              {formUrl ? (
+                <QRCodeCanvas value={formUrl} size={125} />
+              ) : (
+                <div className="qr-placeholder" aria-hidden="true" />
+              )}
+            </div>
+          </div>
         </Stack>
       </div>
-
-      {formUrl && (
-        <div className="form-side center-qr">
-          <QrSection formUrl={formUrl} />
-        </div>
-      )}
     </div>
   );
 }

@@ -18,7 +18,7 @@ export default function App() {
       <header className="header modern-header">
         <div className="header-inner">
           {/* 左：タイトル */}
-          <h1 className="app-title">フォーム作成集計ツール（産学懇話会用）</h1>
+          <h1 className="app-title">フォーム作成集計ツール</h1>
 
           {/* 中央右：タブメニュー */}
           <nav className="nav-tabs right-tabs">
