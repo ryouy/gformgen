@@ -136,6 +136,34 @@ function getAnswerValue(answer) {
   );
 }
 
+function isParticipantNameTitle(title) {
+  const t = String(title || "");
+  // 新形式: "氏名（1）" / "参加者名（1）"
+  // 旧形式: "氏名"
+  // NOTE: 要件にある prefix 判定（例: "参加者名（"）にも将来対応しやすいよう緩めにしている
+  return (
+    t.includes("参加者名（") ||
+    t.includes("氏名（") ||
+    t.includes("氏名(") ||
+    t === "氏名"
+  );
+}
+
+function isParticipantRoleTitle(title) {
+  const t = String(title || "");
+  return t.includes("役職名（") || t.includes("役職名(") || t === "役職名";
+}
+
+function parseIndexedFieldNumber(title) {
+  const t = String(title || "");
+  // 全角括弧: （1） / 半角: (1)
+  const m1 = t.match(/（\s*(\d+)\s*）/);
+  if (m1?.[1]) return Number(m1[1]);
+  const m2 = t.match(/\(\s*(\d+)\s*\)/);
+  if (m2?.[1]) return Number(m2[1]);
+  return null;
+}
+
 function extractGoogleApiError(err) {
   const status =
     err?.response?.status ||
@@ -184,7 +212,20 @@ app.post("/api/forms/create", async (req, res) => {
 
     oauth2Client.setCredentials(savedTokens);
 
-    const { title, content, datetime, deadline, place, host } = req.body;
+    const {
+      title,
+      content,
+      datetime,
+      deadline,
+      place,
+      host,
+      participantNameCount,
+    } = req.body;
+
+    const parsedCount = Number(participantNameCount);
+    const safeParticipantNameCount = Number.isFinite(parsedCount)
+      ? Math.max(1, Math.min(20, Math.floor(parsedCount)))
+      : 1;
 
     // ★ Drive / Forms に表示される最終タイトル
     const baseTitle = title ? `${title} 出席通知書` : "出席通知書";
@@ -198,6 +239,7 @@ app.post("/api/forms/create", async (req, res) => {
       hasContent: Boolean(content),
       hasDatetime: Boolean(datetime),
       hasDeadline: Boolean(deadline),
+      participantNameCount: safeParticipantNameCount,
     });
 
     /* =========================
@@ -243,106 +285,115 @@ ${formTitle}
     /* =========================
        ② batchUpdate（★ここが重要）
     ========================= */
+    const requests = [];
+    // ★ タイトル + 説明文を明示的に更新
+    requests.push({
+      updateFormInfo: {
+        info: {
+          title: formTitle,
+          description,
+        },
+        updateMask: "title,description",
+      },
+    });
+
+    // 事業所名
+    requests.push({
+      createItem: {
+        item: {
+          title: "事業所名",
+          questionItem: {
+            question: {
+              required: true,
+              textQuestion: {},
+            },
+          },
+        },
+        location: { index: 0 },
+      },
+    });
+
+    // 役職名（n）/ 氏名（n）: 氏名の1人目のみ必須、2人目以降は任意
+    // 役職名は全て任意（入力負担を増やさない）
+    let cursorIndex = 1;
+    for (let i = 1; i <= safeParticipantNameCount; i += 1) {
+      // 役職名（i）
+      requests.push({
+        createItem: {
+          item: {
+            title: `役職名（${i}）`,
+            questionItem: {
+              question: {
+                required: false,
+                textQuestion: {},
+              },
+            },
+          },
+          location: { index: cursorIndex },
+        },
+      });
+      cursorIndex += 1;
+
+      // 氏名（i）
+      requests.push({
+        createItem: {
+          item: {
+            title: `氏名（${i}）`,
+            questionItem: {
+              question: {
+                required: i === 1,
+                textQuestion: {},
+              },
+            },
+          },
+          location: { index: cursorIndex },
+        },
+      });
+      cursorIndex += 1;
+    }
+
+    const attendanceIndex = cursorIndex;
+    // 出欠
+    requests.push({
+      createItem: {
+        item: {
+          title: "出席／欠席",
+          questionItem: {
+            question: {
+              required: true,
+              choiceQuestion: {
+                type: "RADIO",
+                options: [{ value: "出席" }, { value: "欠席" }],
+              },
+            },
+          },
+        },
+        location: { index: attendanceIndex },
+      },
+    });
+
+    // 備考
+    requests.push({
+      createItem: {
+        item: {
+          title: "備考",
+          questionItem: {
+            question: {
+              required: false,
+              textQuestion: {
+                paragraph: true,
+              },
+            },
+          },
+        },
+        location: { index: attendanceIndex + 1 },
+      },
+    });
+
     await forms.forms.batchUpdate({
       formId,
       requestBody: {
-        requests: [
-          // ★ タイトル + 説明文を明示的に更新
-          {
-            updateFormInfo: {
-              info: {
-                title: formTitle,
-                description,
-              },
-              updateMask: "title,description",
-            },
-          },
-
-          // 事業所名
-          {
-            createItem: {
-              item: {
-                title: "事業所名",
-                questionItem: {
-                  question: {
-                    required: true,
-                    textQuestion: {},
-                  },
-                },
-              },
-              location: { index: 0 },
-            },
-          },
-
-          // 役職名
-          {
-            createItem: {
-              item: {
-                title: "役職名",
-                questionItem: {
-                  question: {
-                    required: false,
-                    textQuestion: {},
-                  },
-                },
-              },
-              location: { index: 1 },
-            },
-          },
-
-          // 氏名
-          {
-            createItem: {
-              item: {
-                title: "氏名",
-                questionItem: {
-                  question: {
-                    required: true,
-                    textQuestion: {},
-                  },
-                },
-              },
-              location: { index: 2 },
-            },
-          },
-
-          // 出欠
-          {
-            createItem: {
-              item: {
-                title: "出席／欠席",
-                questionItem: {
-                  question: {
-                    required: true,
-                    choiceQuestion: {
-                      type: "RADIO",
-                      options: [{ value: "出席" }, { value: "欠席" }],
-                    },
-                  },
-                },
-              },
-              location: { index: 3 },
-            },
-          },
-
-          // 備考
-          {
-            createItem: {
-              item: {
-                title: "備考",
-                questionItem: {
-                  question: {
-                    required: false,
-                    textQuestion: {
-                      paragraph: true,
-                    },
-                  },
-                },
-              },
-              location: { index: 4 },
-            },
-          },
-        ],
+        requests,
       },
     });
 
@@ -466,10 +517,15 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
         role: "",
         name: "",
         attendance: "",
-        count: 1,
+        count: 0,
         remarks: "",
         submittedAt: r?.lastSubmittedTime || "",
       };
+
+      /** @type {Record<string, string>} */
+      const rolesByIdx = {};
+      /** @type {Record<string, string>} */
+      const namesByIdx = {};
 
       for (const [questionId, answer] of Object.entries(answers)) {
         const title = questionIdToTitle.get(String(questionId)) || "";
@@ -477,12 +533,63 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
         if (!title) continue;
 
         // タイトル部分一致で分類
-        if (title.includes("事業所")) row.company = value;
-        else if (title.includes("役職")) row.role = value;
-        else if (title.includes("氏名")) row.name = value;
-        else if (title.includes("出席")) row.attendance = value;
-        else if (title.includes("備考")) row.remarks = value;
+        if (title.includes("事業所")) {
+          row.company = value;
+          continue;
+        }
+        if (title.includes("出席")) {
+          row.attendance = value;
+          continue;
+        }
+        if (title.includes("備考")) {
+          row.remarks = value;
+          continue;
+        }
+
+        // 役職名（n） / 役職名
+        if (isParticipantRoleTitle(title)) {
+          const idx = parseIndexedFieldNumber(title) ?? 1;
+          const v = String(value || "").trim();
+          if (v) rolesByIdx[String(idx)] = v;
+          else if (title === "役職名" && !rolesByIdx["1"]) rolesByIdx["1"] = "";
+          continue;
+        }
+
+        // 氏名（n） / 氏名 / 参加者名（n）
+        if (isParticipantNameTitle(title)) {
+          const idx = parseIndexedFieldNumber(title) ?? 1;
+          const v = String(value || "").trim();
+          if (v) namesByIdx[String(idx)] = v;
+          else if (title === "氏名" && !namesByIdx["1"]) namesByIdx["1"] = "";
+          continue;
+        }
       }
+
+      const idxs = Array.from(
+        new Set([
+          ...Object.keys(namesByIdx),
+          ...Object.keys(rolesByIdx),
+        ])
+      )
+        .map((s) => Number(s))
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => a - b);
+
+      const names = [];
+      const roles = [];
+      for (const i of idxs) {
+        const name = String(namesByIdx[String(i)] || "").trim();
+        const role = String(rolesByIdx[String(i)] || "").trim();
+        if (name) names.push(name);
+        if (role) roles.push(role);
+      }
+
+      row.name = names.join(" / ");
+      row.role = roles.join(" / ");
+      const participantCount = names.length;
+      if (row.attendance === "出席") row.count = participantCount || 1;
+      else if (row.attendance === "欠席") row.count = 0;
+      else row.count = participantCount || 0;
 
       return row;
     });
@@ -504,6 +611,75 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
       message: err?.message || String(err),
     });
     return res.status(500).json({ error: "Failed to list responses" });
+  }
+});
+
+/* =========================
+   フォーム別サマリー（出席者数/回答者数）
+========================= */
+app.get("/api/forms/:formId/summary", async (req, res) => {
+  const { formId } = req.params;
+
+  try {
+    if (!savedTokens) {
+      void logEvent({
+        type: "forms_summary_rejected",
+        reason: "not_logged_in",
+        formId,
+      });
+      return res.status(401).json({ error: "Not logged in" });
+    }
+
+    void logEvent({ type: "forms_summary_requested", formId });
+    oauth2Client.setCredentials(savedTokens);
+    const forms = google.forms({ version: "v1", auth: oauth2Client });
+
+    const questionIdToTitle = await buildQuestionIdToTitleMap(forms, formId);
+    const { responses } = await listAllFormResponses(forms, formId);
+
+    const responseCount = responses.length;
+    let attendeeCount = 0;
+
+    for (const r of responses) {
+      const answers = r?.answers || {};
+      // 出席者数は「出席回答」のみを集計対象とする
+      let attendance = "";
+      for (const [questionId, answer] of Object.entries(answers)) {
+        const title = questionIdToTitle.get(String(questionId)) || "";
+        if (!title) continue;
+        if (!title.includes("出席")) continue;
+        attendance = String(getAnswerValue(answer) || "").trim();
+        break;
+      }
+      if (attendance !== "出席") continue;
+
+      for (const [questionId, answer] of Object.entries(answers)) {
+        const title = questionIdToTitle.get(String(questionId)) || "";
+        if (!title) continue;
+        if (!isParticipantNameTitle(title)) continue;
+        const v = String(getAnswerValue(answer) || "").trim();
+        if (v) attendeeCount += 1;
+      }
+    }
+
+    void logEvent({
+      type: "forms_summary_succeeded",
+      formId,
+      responseCount,
+      attendeeCount,
+    });
+    return res.json({ formId, responseCount, attendeeCount });
+  } catch (err) {
+    console.error(err);
+    const { status, message } = extractGoogleApiError(err);
+    void logEvent({
+      type: "forms_summary_failed",
+      formId,
+      message,
+    });
+    return res
+      .status(status || 500)
+      .json({ error: message || "Failed to get summary" });
   }
 });
 

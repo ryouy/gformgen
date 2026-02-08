@@ -31,6 +31,7 @@ function formatDateYMD(isoString) {
 export default function StatsViewer({ initialFormId }) {
   const meetingTitle = "2025年10月 定例会（会津地区経営者協会）";
   const [forms, setForms] = useState([]);
+  const [summaries, setSummaries] = useState({}); // { [formId]: { responseCount, attendeeCount } }
   const [selectedFormId, setSelectedFormId] = useState("");
   const [formUrl, setFormUrl] = useState("");
   const [acceptingResponses, setAcceptingResponses] = useState(null);
@@ -49,6 +50,8 @@ export default function StatsViewer({ initialFormId }) {
       if (!res.ok) throw new Error(data?.error || "Failed to list forms");
       const list = Array.isArray(data?.forms) ? data.forms : [];
       setForms(list);
+      // 一覧表示は「リアルタイム集計（キャッシュ不要）」方針なので、都度サマリーは取り直す
+      setSummaries({});
       return list;
     } catch (e) {
       console.error(e);
@@ -57,6 +60,47 @@ export default function StatsViewer({ initialFormId }) {
       return [];
     }
   }, []);
+
+  const fetchSummary = useCallback(async (formId) => {
+    if (!formId) return null;
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/forms/${encodeURIComponent(formId)}/summary`
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to get summary");
+      const responseCount = Number(data?.responseCount);
+      const attendeeCount = Number(data?.attendeeCount);
+      if (!Number.isFinite(responseCount) || !Number.isFinite(attendeeCount)) {
+        throw new Error("Invalid API response: summary is not numeric");
+      }
+      setSummaries((prev) => ({
+        ...prev,
+        [formId]: { responseCount, attendeeCount },
+      }));
+      return { responseCount, attendeeCount };
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  }, []);
+
+  const prefetchSummaries = useCallback(
+    async (formIds) => {
+      const ids = Array.from(new Set((formIds || []).filter(Boolean)));
+      if (ids.length === 0) return;
+
+      const missing = ids.filter((id) => summaries?.[id] == null);
+      if (missing.length === 0) return;
+
+      // 軽い並列制限（5件ずつ）
+      for (let i = 0; i < missing.length; i += 5) {
+        const chunk = missing.slice(i, i + 5);
+        await Promise.allSettled(chunk.map((id) => fetchSummary(id)));
+      }
+    },
+    [fetchSummary, summaries]
+  );
 
   const fetchFormInfo = useCallback(async (formId) => {
     try {
@@ -129,10 +173,20 @@ export default function StatsViewer({ initialFormId }) {
       // 選択したフォームが締切済みならリストもそちらに寄せる
       const selected = list.find((f) => f.formId === nextId);
       setListMode(selected?.acceptingResponses === false ? "closed" : "open");
+      // 一覧にサマリー表示するため、まず選択フォームだけ先に取る
+      void fetchSummary(nextId);
       await fetchFormInfo(nextId);
       await fetchRows(nextId);
     })();
-  }, [fetchForms, fetchFormInfo, fetchRows, initialFormId]);
+  }, [fetchForms, fetchFormInfo, fetchRows, fetchSummary, initialFormId]);
+
+  // listMode/forms 変更に応じて、表示対象リスト分のサマリーを事前取得
+  useEffect(() => {
+    const open = forms.filter((f) => f.acceptingResponses !== false);
+    const closed = forms.filter((f) => f.acceptingResponses === false);
+    const list = listMode === "closed" ? closed : open;
+    void prefetchSummaries(list.map((f) => f.formId));
+  }, [forms, listMode, prefetchSummaries]);
 
   // フォーム送信後に戻ってきた時に自動更新（ノーリロード）
   useEffect(() => {
@@ -226,6 +280,7 @@ export default function StatsViewer({ initialFormId }) {
               }
               window.localStorage.setItem(SELECTED_FORM_ID_STORAGE_KEY, id);
               // await せず並列で走らせて、空表示のチラつきを避ける
+              void fetchSummary(id);
               void fetchFormInfo(id);
               void fetchRows(id);
             }}
@@ -247,6 +302,12 @@ export default function StatsViewer({ initialFormId }) {
                   .replace(/\s+/g, " ")
                   .trim();
 
+              const truncate = (t, max = 12) => {
+                const s = String(t || "");
+                if (s.length <= max) return s;
+                return `${s.slice(0, max)}…`;
+              };
+
               const open = forms.filter((f) => f.acceptingResponses !== false);
               const closed = forms.filter((f) => f.acceptingResponses === false);
               const list = listMode === "closed" ? closed : open;
@@ -255,10 +316,15 @@ export default function StatsViewer({ initialFormId }) {
                 list.map((f) => {
                   const title = normalizeTitle(f.title);
                   const ymd = formatDateYMD(f.createdTime);
+                  const s = summaries?.[f.formId];
+                  const summaryText = s
+                    ? ` 出席:${s.attendeeCount}人 / 回答:${s.responseCount}件`
+                    : " 出席:…人 / 回答:…件";
                   return (
                     <option key={f.formId} value={f.formId}>
-                      {title}
-                      {ymd ? `（${ymd} 作成）` : ""}
+                      {truncate(title, 12)}
+                      {summaryText}
+                      {ymd ? `（${ymd}）` : ""}
                     </option>
                   );
                 });

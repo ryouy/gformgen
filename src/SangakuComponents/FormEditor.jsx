@@ -1,6 +1,6 @@
 // src/SangakuComponents/FormEditor.jsx
 import { useState } from "react";
-import { Stack, TextField, Button, Box } from "@mui/material";
+import { Stack, TextField, Button, Box, MenuItem } from "@mui/material";
 import dayjs from "dayjs";
 import { QRCodeCanvas } from "qrcode.react";
 
@@ -19,6 +19,7 @@ export default function FormEditor({
     place: "会津若松ワシントンホテル",
     host: "会津産学懇話会",
     content: "",
+    participantNameCount: 1,
   });
 
   const [formUrl, setFormUrl] = useState(null);
@@ -65,6 +66,7 @@ export default function FormEditor({
           deadline: formData.deadline ? formData.deadline.toISOString() : null,
           place: formData.place,
           host: formData.host,
+          participantNameCount: Number(formData.participantNameCount) || 1,
         }),
       });
 
@@ -123,6 +125,21 @@ export default function FormEditor({
           />
 
           <TextField
+            select
+            label="参加者名の入力人数（1回答あたり）"
+            name="participantNameCount"
+            value={formData.participantNameCount}
+            onChange={handleChange}
+            fullWidth
+          >
+            {[1, 2, 3, 5].map((n) => (
+              <MenuItem key={n} value={n}>
+                {n} 人分
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
             label="本文"
             name="content"
             value={formData.content}
@@ -176,7 +193,7 @@ export default function FormEditor({
 
             <div className={`qr-inline ${formUrl ? "" : "is-placeholder"}`}>
               {formUrl ? (
-                <QRCodeCanvas value={formUrl} size={125} />
+                <QRCodeCanvas value={formUrl} size={95} />
               ) : (
                 <div className="qr-placeholder" aria-hidden="true" />
               )}

@@ -7,7 +7,10 @@ export default function DataTable({ participants }) {
   const attending = participants.filter(isAttending);
 
   const totalAttendance = attending.reduce(
-    (sum, p) => sum + (Number(p?.count) || 1),
+    (sum, p) => {
+      const n = Number(p?.count);
+      return sum + (Number.isFinite(n) ? n : 0);
+    },
     0
   );
 
@@ -44,7 +47,7 @@ export default function DataTable({ participants }) {
                   <td>{p.role || "ー"}</td>
                   <td>{p.name || ""}</td>
                   <td>{attendingLabel}</td>
-                  <td>{Number(p?.count) || 1}</td>
+                  <td>{Number.isFinite(Number(p?.count)) ? Number(p?.count) : 0}</td>
                 </tr>
               );
             })}
