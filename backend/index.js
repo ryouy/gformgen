@@ -12,6 +12,7 @@ app.use(express.json());
 app.use(requestLogger);
 
 const PORT = 3000;
+const FORM_NAME_TAG = "[gformgen:sangaku]"; // Drive検索で「このアプリが作ったフォーム」を判別するタグ
 
 /* =========================
    Google OAuth 設定
@@ -152,7 +153,8 @@ app.post("/api/forms/create", async (req, res) => {
     const { title, content, datetime, deadline, place, host } = req.body;
 
     // ★ Drive / Forms に表示される最終タイトル
-    const formTitle = title ? `${title} 出席通知書` : "出席通知書";
+    const baseTitle = title ? `${title} 出席通知書` : "出席通知書";
+    const formTitle = `${FORM_NAME_TAG} ${baseTitle}`;
 
     console.log("受け取ったフォームデータ:", req.body);
     void logEvent({
@@ -468,6 +470,100 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
       message: err?.message || String(err),
     });
     return res.status(500).json({ error: "Failed to list responses" });
+  }
+});
+
+/* =========================
+   このアプリが作成したフォーム一覧（Drive検索）
+========================= */
+app.get("/api/forms/list", async (req, res) => {
+  try {
+    if (!savedTokens) {
+      void logEvent({
+        type: "forms_list_rejected",
+        reason: "not_logged_in",
+      });
+      return res.status(401).json({ error: "Not logged in" });
+    }
+
+    void logEvent({ type: "forms_list_requested" });
+
+    oauth2Client.setCredentials(savedTokens);
+    const drive = google.drive({ version: "v3", auth: oauth2Client });
+
+    // drive.file の範囲内で、タグ付きのGoogleフォームのみ抽出
+    const q = [
+      "trashed = false",
+      "mimeType = 'application/vnd.google-apps.form'",
+      `name contains '${FORM_NAME_TAG}'`,
+    ].join(" and ");
+
+    const result = await drive.files.list({
+      q,
+      orderBy: "createdTime desc",
+      pageSize: 100,
+      fields: "files(id,name,createdTime,modifiedTime)",
+    });
+
+    const files = result?.data?.files || [];
+    const forms = files.map((f) => ({
+      formId: f.id,
+      title: f.name,
+      createdTime: f.createdTime,
+      modifiedTime: f.modifiedTime,
+    }));
+
+    void logEvent({ type: "forms_list_succeeded", count: forms.length });
+    return res.json({ forms });
+  } catch (err) {
+    console.error(err);
+    void logEvent({
+      type: "forms_list_failed",
+      message: err?.message || String(err),
+    });
+    return res.status(500).json({ error: "Failed to list forms" });
+  }
+});
+
+/* =========================
+   フォーム情報取得（responderUriなど）
+========================= */
+app.get("/api/forms/:formId/info", async (req, res) => {
+  const { formId } = req.params;
+
+  try {
+    if (!savedTokens) {
+      void logEvent({
+        type: "forms_info_rejected",
+        reason: "not_logged_in",
+        formId,
+      });
+      return res.status(401).json({ error: "Not logged in" });
+    }
+
+    void logEvent({ type: "forms_info_requested", formId });
+
+    oauth2Client.setCredentials(savedTokens);
+    const forms = google.forms({ version: "v1", auth: oauth2Client });
+
+    const result = await forms.forms.get({ formId });
+    const info = result?.data?.info || {};
+    const responderUri = result?.data?.responderUri || "";
+
+    void logEvent({ type: "forms_info_succeeded", formId });
+    return res.json({
+      formId,
+      title: info?.title || "",
+      formUrl: responderUri,
+    });
+  } catch (err) {
+    console.error(err);
+    void logEvent({
+      type: "forms_info_failed",
+      formId,
+      message: err?.message || String(err),
+    });
+    return res.status(500).json({ error: "Failed to get form info" });
   }
 });
 

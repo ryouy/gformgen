@@ -9,7 +9,14 @@ import DeadDateTimeInput from "./DeadDateTimeInput";
 
 const DEADLINE_DAYS_BEFORE = 2; // ← 締切は◯日前
 
-export default function FormEditor({ onFormCreated }) {
+export default function FormEditor({
+  onFormCreated,
+  forms = [],
+  selectedFormId,
+  selectedFormUrl,
+  onSelectFormId,
+  onRefreshForms,
+}) {
   const [formData, setFormData] = useState({
     title: "会津産学懇話会10月定例会",
     datetime: dayjs("2025-12-25 15:00"),
@@ -19,7 +26,6 @@ export default function FormEditor({ onFormCreated }) {
     content: "",
   });
 
-  const [formUrl, setFormUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -49,7 +55,6 @@ export default function FormEditor({ onFormCreated }) {
   const handleCreate = async () => {
     setLoading(true);
     setError(null);
-    setFormUrl(null); // 連打/再作成時に古いQRが残らないようにする
     onFormCreated?.({ formId: null });
 
     try {
@@ -69,7 +74,6 @@ export default function FormEditor({ onFormCreated }) {
       if (!res.ok) throw new Error("API error");
 
       const data = await res.json();
-      setFormUrl(data.formUrl);
       onFormCreated?.({ formId: data.formId, formUrl: data.formUrl });
     } catch (e) {
       console.error(e);
@@ -130,6 +134,32 @@ export default function FormEditor({ onFormCreated }) {
             fullWidth
           />
 
+          {/* ✅ 既存フォーム選択（フォーム作成タブ側の動線） */}
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <select
+              value={selectedFormId || ""}
+              onChange={(e) => void onSelectFormId?.(e.target.value)}
+              style={{
+                maxWidth: 420,
+                padding: "0.55rem 0.7rem",
+                borderRadius: 12,
+                border: "1px solid rgba(148,163,184,0.6)",
+                background: "#fff",
+              }}
+              aria-label="既存フォーム選択"
+            >
+              <option value="">（既存フォームを選択）</option>
+              {forms.map((f) => (
+                <option key={f.formId} value={f.formId}>
+                  {f.title}
+                </option>
+              ))}
+            </select>
+            <button className="expand-btn" onClick={() => void onRefreshForms?.()}>
+              一覧更新
+            </button>
+          </div>
+
           {error && (
             <p style={{ color: "red", textAlign: "center" }}>{error}</p>
           )}
@@ -148,12 +178,12 @@ export default function FormEditor({ onFormCreated }) {
                 {loading ? "作成中..." : "フォームを作成"}
               </Button>
 
-              {formUrl ? (
+              {selectedFormUrl ? (
                 <Button
                   variant="outlined"
                   size="large"
                   component="a"
-                  href={formUrl}
+                  href={selectedFormUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="action-btn action-secondary"
@@ -172,9 +202,9 @@ export default function FormEditor({ onFormCreated }) {
               )}
             </div>
 
-            <div className={`qr-inline ${formUrl ? "" : "is-placeholder"}`}>
-              {formUrl ? (
-                <QRCodeCanvas value={formUrl} size={125} />
+            <div className={`qr-inline ${selectedFormUrl ? "" : "is-placeholder"}`}>
+              {selectedFormUrl ? (
+                <QRCodeCanvas value={selectedFormUrl} size={125} />
               ) : (
                 <div className="qr-placeholder" aria-hidden="true" />
               )}

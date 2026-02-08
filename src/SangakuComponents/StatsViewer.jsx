@@ -1,5 +1,5 @@
 // src/components/StatsViewer.jsx
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import DataTable from "./DataTable";
 import AttendingList from "./AttendingList";
 
@@ -9,50 +9,64 @@ export default function StatsViewer({ formId }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const fetchRows = useCallback(async () => {
+    if (!formId) return;
+
+    setLoading(true);
+    setError(null);
+    console.log("StatsViewer formId:", formId);
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/forms/${encodeURIComponent(formId)}/responses`
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = data?.error || "Failed to fetch responses";
+        throw new Error(message);
+      }
+
+      const nextRows = data?.rows;
+      if (nextRows == null) {
+        setRows([]);
+        return;
+      }
+      if (!Array.isArray(nextRows)) {
+        throw new Error("Invalid API response: rows is not an array");
+      }
+
+      setRows(nextRows);
+    } catch (e) {
+      console.error(e);
+      setRows([]);
+      setError(e?.message || "Failed to fetch responses");
+    } finally {
+      setLoading(false);
+    }
+  }, [formId]);
+
+  useEffect(() => {
+    if (!formId) return;
+    void fetchRows();
+  }, [formId, fetchRows]);
+
+  // フォーム送信後に戻ってきた時に自動更新（ノーリロード）
   useEffect(() => {
     if (!formId) return;
 
-    let cancelled = false;
-    const run = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const res = await fetch(
-          `http://localhost:3000/api/forms/${encodeURIComponent(formId)}/responses`
-        );
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const message = data?.error || "Failed to fetch responses";
-          throw new Error(message);
-        }
-
-        const nextRows = data?.rows;
-        if (nextRows == null) {
-          if (!cancelled) setRows([]);
-          return;
-        }
-        if (!Array.isArray(nextRows)) {
-          throw new Error("Invalid API response: rows is not an array");
-        }
-
-        if (!cancelled) setRows(nextRows);
-      } catch (e) {
-        console.error(e);
-        if (!cancelled) {
-          setRows([]);
-          setError(e?.message || "Failed to fetch responses");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    const onFocus = () => {
+      if (!document.hidden) void fetchRows();
+    };
+    const onVisibility = () => {
+      if (!document.hidden) void fetchRows();
     };
 
-    run();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [formId]);
+  }, [formId, fetchRows]);
 
   return (
     <div className="stats-viewer">
@@ -66,12 +80,17 @@ export default function StatsViewer({ formId }) {
         <p style={{ color: "red", textAlign: "center", marginTop: "1rem" }}>
           {error}
         </p>
-      ) : rows.length === 0 ? (
-        <p style={{ textAlign: "center", marginTop: "1rem" }}>
-          回答はまだありません
-        </p>
       ) : (
         <>
+          {rows.length === 0 && (
+            <div style={{ textAlign: "center", marginTop: "1rem" }}>
+              <p>回答はまだありません</p>
+              <button className="expand-btn" onClick={fetchRows}>
+                更新
+              </button>
+            </div>
+          )}
+
           {/* 全体集計テーブル */}
           <DataTable participants={rows} />
 
