@@ -7,6 +7,7 @@ import StatsViewer from "./StatsViewer";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("form");
+  const [formId, setFormId] = useState(null);
 
   const handleGoHome = () => {
     // ホームページに戻る処理（ルートを持つ場合は navigate("/") など）
@@ -50,11 +51,15 @@ export default function App() {
       <main className="content">
         {activeTab === "form" ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <FormEditor />
+            <FormEditor
+              onFormCreated={({ formId: createdFormId }) => {
+                setFormId(createdFormId || null);
+              }}
+            />
           </motion.div>
         ) : (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <StatsViewer />
+            <StatsViewer formId={formId} />
           </motion.div>
         )}
       </main>

@@ -34,6 +34,7 @@ app.get("/auth/google", (req, res) => {
     prompt: "consent",
     scope: [
       "https://www.googleapis.com/auth/forms.body",
+      "https://www.googleapis.com/auth/forms.responses.readonly",
       "https://www.googleapis.com/auth/drive.file",
     ],
   });
@@ -85,6 +86,53 @@ const formatDateJP = (isoString, withTime = false) => {
 
   return `${y}年${m}月${day}日（${w}）`;
 };
+
+/* =========================
+   Forms: 回答/設問ユーティリティ
+========================= */
+async function listAllFormResponses(forms, formId) {
+  const responses = [];
+  let nextPageToken = undefined;
+
+  do {
+    const result = await forms.forms.responses.list({
+      formId,
+      pageSize: 200,
+      pageToken: nextPageToken,
+    });
+
+    const pageResponses = result?.data?.responses || [];
+    responses.push(...pageResponses);
+    nextPageToken = result?.data?.nextPageToken;
+  } while (nextPageToken);
+
+  return { responses, nextPageToken: null };
+}
+
+async function buildQuestionIdToTitleMap(forms, formId) {
+  const result = await forms.forms.get({ formId });
+  const items = result?.data?.items || [];
+
+  /** @type {Map<string, string>} */
+  const map = new Map();
+
+  for (const item of items) {
+    const questionId = item?.questionItem?.question?.questionId;
+    const title = item?.title;
+    if (!questionId || !title) continue;
+    map.set(String(questionId), String(title));
+  }
+
+  return map;
+}
+
+function getAnswerValue(answer) {
+  return (
+    answer?.textAnswers?.answers?.[0]?.value ??
+    answer?.textAnswer?.value ?? // 念のため
+    ""
+  );
+}
 
 /* =========================
    フォーム作成 API
@@ -292,6 +340,134 @@ ${formTitle}
       message: err?.message || String(err),
     });
     res.status(500).json({ error: "Failed to create form" });
+  }
+});
+
+/* =========================
+   フォーム回答取得（RAW）
+========================= */
+app.get("/api/forms/:formId/responses/raw", async (req, res) => {
+  const { formId } = req.params;
+
+  try {
+    if (!savedTokens) {
+      void logEvent({
+        type: "forms_responses_list_rejected",
+        reason: "not_logged_in",
+        formId,
+      });
+      return res.status(401).json({ error: "Not logged in" });
+    }
+
+    void logEvent({
+      type: "forms_responses_list_requested",
+      formId,
+      mode: "raw",
+    });
+
+    oauth2Client.setCredentials(savedTokens);
+    const forms = google.forms({ version: "v1", auth: oauth2Client });
+
+    const { responses, nextPageToken } = await listAllFormResponses(forms, formId);
+
+    void logEvent({
+      type: "forms_responses_list_succeeded",
+      formId,
+      mode: "raw",
+      count: responses.length,
+    });
+
+    return res.json({
+      formId,
+      responses,
+      nextPageToken,
+    });
+  } catch (err) {
+    console.error(err);
+    void logEvent({
+      type: "forms_responses_list_failed",
+      formId,
+      mode: "raw",
+      message: err?.message || String(err),
+    });
+    return res.status(500).json({ error: "Failed to list responses" });
+  }
+});
+
+/* =========================
+   フォーム回答取得（整形）
+========================= */
+app.get("/api/forms/:formId/responses", async (req, res) => {
+  const { formId } = req.params;
+
+  try {
+    if (!savedTokens) {
+      void logEvent({
+        type: "forms_responses_list_rejected",
+        reason: "not_logged_in",
+        formId,
+      });
+      return res.status(401).json({ error: "Not logged in" });
+    }
+
+    void logEvent({
+      type: "forms_responses_list_requested",
+      formId,
+      mode: "formatted",
+    });
+
+    oauth2Client.setCredentials(savedTokens);
+    const forms = google.forms({ version: "v1", auth: oauth2Client });
+
+    const questionIdToTitle = await buildQuestionIdToTitleMap(forms, formId);
+    const { responses } = await listAllFormResponses(forms, formId);
+
+    const rows = responses.map((r) => {
+      const answers = r?.answers || {};
+
+      const row = {
+        company: "",
+        role: "",
+        name: "",
+        attendance: "",
+        count: 1,
+        remarks: "",
+        submittedAt: r?.lastSubmittedTime || "",
+      };
+
+      for (const [questionId, answer] of Object.entries(answers)) {
+        const title = questionIdToTitle.get(String(questionId)) || "";
+        const value = getAnswerValue(answer);
+        if (!title) continue;
+
+        // タイトル部分一致で分類
+        if (title.includes("事業所")) row.company = value;
+        else if (title.includes("役職")) row.role = value;
+        else if (title.includes("氏名")) row.name = value;
+        else if (title.includes("出席")) row.attendance = value;
+        else if (title.includes("備考")) row.remarks = value;
+      }
+
+      return row;
+    });
+
+    void logEvent({
+      type: "forms_responses_list_succeeded",
+      formId,
+      mode: "formatted",
+      count: rows.length,
+    });
+
+    return res.json({ formId, rows });
+  } catch (err) {
+    console.error(err);
+    void logEvent({
+      type: "forms_responses_list_failed",
+      formId,
+      mode: "formatted",
+      message: err?.message || String(err),
+    });
+    return res.status(500).json({ error: "Failed to list responses" });
   }
 });
 

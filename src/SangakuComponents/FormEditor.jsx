@@ -9,7 +9,7 @@ import DeadDateTimeInput from "./DeadDateTimeInput";
 
 const DEADLINE_DAYS_BEFORE = 2; // ← 締切は◯日前
 
-export default function FormEditor() {
+export default function FormEditor({ onFormCreated }) {
   const [formData, setFormData] = useState({
     title: "会津産学懇話会10月定例会",
     datetime: dayjs("2025-12-25 15:00"),
@@ -50,6 +50,7 @@ export default function FormEditor() {
     setLoading(true);
     setError(null);
     setFormUrl(null); // 連打/再作成時に古いQRが残らないようにする
+    onFormCreated?.({ formId: null });
 
     try {
       const res = await fetch("http://localhost:3000/api/forms/create", {
@@ -69,6 +70,7 @@ export default function FormEditor() {
 
       const data = await res.json();
       setFormUrl(data.formUrl);
+      onFormCreated?.({ formId: data.formId, formUrl: data.formUrl });
     } catch (e) {
       console.error(e);
       setError("フォーム作成に失敗しました");

@@ -3,13 +3,17 @@ import { useState } from "react";
 export default function DataTable({ participants }) {
   const [expanded, setExpanded] = useState(false);
 
-  const totalAttendance = participants
-    .filter((p) => p.status === "出席")
-    .reduce((sum, p) => sum + p.count, 0);
+  const isAttending = (p) => p?.attendance === "出席";
+  const attending = participants.filter(isAttending);
 
-  const attendanceCompanies = participants.filter(
-    (p) => p.status === "出席"
-  ).length;
+  const totalAttendance = attending.reduce(
+    (sum, p) => sum + (Number(p?.count) || 1),
+    0
+  );
+
+  const attendanceCompanies = new Set(
+    attending.map((p) => (p?.company || "").trim()).filter(Boolean)
+  ).size;
 
   const displayedList = expanded ? participants : participants.slice(0, 10);
   const hasMore = participants.length > 10 && !expanded;
@@ -30,20 +34,17 @@ export default function DataTable({ participants }) {
           </thead>
           <tbody>
             {displayedList.map((p, i) => {
-              const match = p.name.match(/(教授|准教授|講師)/);
-              const title = match ? match[0] : "ー";
-              const cleanName = p.name.replace(/(教授|准教授|講師)/, "").trim();
-
+              const attendingLabel = isAttending(p) ? "出席" : "欠席";
               return (
                 <tr
                   key={i}
-                  className={p.status === "欠席" ? "absent-row" : "present-row"}
+                  className={attendingLabel === "欠席" ? "absent-row" : "present-row"}
                 >
-                  <td>{p.company}</td>
-                  <td>{title}</td>
-                  <td>{cleanName}</td>
-                  <td>{p.status}</td>
-                  <td>{p.count}</td>
+                  <td>{p.company || ""}</td>
+                  <td>{p.role || "ー"}</td>
+                  <td>{p.name || ""}</td>
+                  <td>{attendingLabel}</td>
+                  <td>{Number(p?.count) || 1}</td>
                 </tr>
               );
             })}

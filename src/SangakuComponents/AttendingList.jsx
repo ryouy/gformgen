@@ -9,9 +9,15 @@ export default function AttendingList({ participants, meetingTitle }) {
   const [expanded, setExpanded] = useState(false);
 
   // 出席データ抽出
-  const attendingList = participants.filter((p) => p.status === "出席");
-  const totalAttendance = attendingList.reduce((sum, p) => sum + p.count, 0);
-  const attendanceCompanies = attendingList.length;
+  const isAttending = (p) => p?.attendance === "出席";
+  const attendingList = participants.filter(isAttending);
+  const totalAttendance = attendingList.reduce(
+    (sum, p) => sum + (Number(p?.count) || 1),
+    0
+  );
+  const attendanceCompanies = new Set(
+    attendingList.map((p) => (p?.company || "").trim()).filter(Boolean)
+  ).size;
 
   const displayedList = expanded ? attendingList : attendingList.slice(0, 10);
   const hasMore = attendingList.length > 10 && !expanded;
@@ -43,20 +49,13 @@ export default function AttendingList({ participants, meetingTitle }) {
 
       // 表データ構築
       const headers = [["No", "事業所名", "役職名", "氏名", "人数"]];
-      const rows = attendingList.map((p, i) => {
-        // 教員の役職を切り出し（例：「田中一郎 教授」→「教授」）
-        const match = p.name.match(/(教授|准教授|講師)/);
-        const title = match ? match[0] : "ー";
-        const cleanName = p.name.replace(/(教授|准教授|講師)/, "").trim();
-
-        return [
-          (i + 1).toString(),
-          p.company,
-          title,
-          cleanName,
-          p.count.toString(),
-        ];
-      });
+      const rows = attendingList.map((p, i) => [
+        (i + 1).toString(),
+        p.company || "",
+        p.role || "ー",
+        p.name || "",
+        String(Number(p?.count) || 1),
+      ]);
 
       // ✅ 表スタイル調整
       pdf.autoTable({
@@ -116,7 +115,11 @@ export default function AttendingList({ participants, meetingTitle }) {
 
       <div className="pdf-header">
         <h3>出席者一覧</h3>
-        <button className="pdf-btn" onClick={handleGeneratePDF}>
+        <button
+          className="pdf-btn"
+          onClick={handleGeneratePDF}
+          disabled={attendingList.length === 0}
+        >
           <Download size={16} /> PDFダウンロード
         </button>
       </div>
@@ -133,20 +136,15 @@ export default function AttendingList({ participants, meetingTitle }) {
             </tr>
           </thead>
           <tbody>
-            {displayedList.map((p, i) => {
-              const match = p.name.match(/(教授|准教授|講師)/);
-              const title = match ? match[0] : "ー";
-              const cleanName = p.name.replace(/(教授|准教授|講師)/, "").trim();
-              return (
-                <tr key={i}>
-                  <td>{i + 1}</td>
-                  <td>{p.company}</td>
-                  <td>{title}</td>
-                  <td>{cleanName}</td>
-                  <td>{p.count}</td>
-                </tr>
-              );
-            })}
+            {displayedList.map((p, i) => (
+              <tr key={i}>
+                <td>{i + 1}</td>
+                <td>{p.company || ""}</td>
+                <td>{p.role || "ー"}</td>
+                <td>{p.name || ""}</td>
+                <td>{Number(p?.count) || 1}</td>
+              </tr>
+            ))}
           </tbody>
           <tfoot>
             <tr>
