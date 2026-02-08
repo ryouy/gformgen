@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, BarChart3, Home } from "lucide-react";
+import { FileText, BarChart3 } from "lucide-react";
 import "../App.css";
 import FormEditor from "./FormEditor";
 import StatsViewer from "./StatsViewer";
@@ -19,17 +19,17 @@ export default function App() {
       <header className="header modern-header">
         <div className="header-inner">
           {/* 左：タイトル */}
-          <h1 className="app-title">フォーム作成集計ツール</h1>
+          <h1
+            className="app-title"
+            onClick={handleGoHome}
+            style={{ cursor: "pointer" }}
+            title="ホームへ戻る"
+          >
+            フォーム作成集計ツール
+          </h1>
 
           {/* 中央右：タブメニュー */}
           <nav className="nav-tabs right-tabs">
-            <div
-              className={`nav-tab ${activeTab === "form" ? "active" : ""}`}
-              onClick={() => setActiveTab("form")}
-            >
-              <FileText size={16} />
-              <span>フォーム作成</span>
-            </div>
             <div
               className={`nav-tab ${activeTab === "stats" ? "active" : ""}`}
               onClick={() => setActiveTab("stats")}
@@ -37,13 +37,14 @@ export default function App() {
               <BarChart3 size={16} />
               <span>集計結果</span>
             </div>
+            <div
+              className={`nav-tab ${activeTab === "form" ? "active" : ""}`}
+              onClick={() => setActiveTab("form")}
+            >
+              <FileText size={16} />
+              <span>フォーム作成</span>
+            </div>
           </nav>
-
-          {/* 右端：ホームボタン */}
-          <button className="home-btn" onClick={handleGoHome}>
-            <Home size={18} />
-            <span>ホーム</span>
-          </button>
         </div>
       </header>
 
