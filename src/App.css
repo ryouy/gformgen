@@ -398,6 +398,76 @@ body {
   animation: blink 1.8s infinite ease-in-out;
 }
 
+/* -------------------------------
+💡 ふわっとツールチップ
+--------------------------------*/
+.tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltip-bubble {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  transform: translateX(-50%) translateY(-4px);
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 3000;
+}
+
+.tooltip-wrap:hover .tooltip-bubble {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.tooltip-bubble::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 0 6px 6px 6px;
+  border-style: solid;
+  border-color: transparent transparent rgba(15, 23, 42, 0.92) transparent;
+}
+
+/* -------------------------------
+🧭 集計中/締切済みのミニ切替
+--------------------------------*/
+.mini-tabs {
+  display: inline-flex;
+  background: rgba(245, 245, 245, 0.7);
+  padding: 4px;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.mini-tab {
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #334155;
+}
+
+.mini-tab.active {
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  color: #1e3a8a;
+}
+
 @keyframes blink {
   0%,
   100% {

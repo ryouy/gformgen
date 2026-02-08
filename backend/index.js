@@ -13,6 +13,7 @@ app.use(requestLogger);
 
 const PORT = 3000;
 const FORM_NAME_TAG = "[gformgen:sangaku]"; // Drive検索で「このアプリが作ったフォーム」を判別するタグ
+const FORM_CLOSED_TAG = "[gformgen:closed]"; // アプリ上の「締切」判定用タグ（Forms APIで受付停止ができないため）
 
 /* =========================
    Google OAuth 設定
@@ -133,6 +134,39 @@ function getAnswerValue(answer) {
     answer?.textAnswer?.value ?? // 念のため
     ""
   );
+}
+
+function extractGoogleApiError(err) {
+  const status =
+    err?.response?.status ||
+    err?.code || // sometimes numeric
+    null;
+  const message =
+    err?.response?.data?.error?.message ||
+    err?.message ||
+    String(err);
+  return {
+    status: typeof status === "number" ? status : null,
+    message,
+  };
+}
+
+function parseAcceptingResponsesFromTitle(title) {
+  // NOTE: Google Forms APIでは「回答受付停止」を直接更新できないため、
+  // アプリ側ではタイトルにタグを付けて締切状態を表現する。
+  const t = String(title || "");
+  if (t.includes(FORM_CLOSED_TAG)) return false;
+  if (t.includes(FORM_NAME_TAG)) return true;
+  return null;
+}
+
+function stripTagsFromTitle(title) {
+  return String(title || "")
+    .replace(`${FORM_NAME_TAG} `, "")
+    .replace(`${FORM_CLOSED_TAG} `, "")
+    .replace(FORM_NAME_TAG, "")
+    .replace(FORM_CLOSED_TAG, "")
+    .trim();
 }
 
 /* =========================
@@ -506,11 +540,13 @@ app.get("/api/forms/list", async (req, res) => {
     });
 
     const files = result?.data?.files || [];
+    // 締切状態はタイトルタグで判定（DBなし運用向け）
     const forms = files.map((f) => ({
       formId: f.id,
       title: f.name,
       createdTime: f.createdTime,
       modifiedTime: f.modifiedTime,
+      acceptingResponses: parseAcceptingResponsesFromTitle(f.name), // true/false/null
     }));
 
     void logEvent({ type: "forms_list_succeeded", count: forms.length });
@@ -549,12 +585,14 @@ app.get("/api/forms/:formId/info", async (req, res) => {
     const result = await forms.forms.get({ formId });
     const info = result?.data?.info || {};
     const responderUri = result?.data?.responderUri || "";
+    const acceptingResponses = parseAcceptingResponsesFromTitle(info?.title);
 
     void logEvent({ type: "forms_info_succeeded", formId });
     return res.json({
       formId,
       title: info?.title || "",
       formUrl: responderUri,
+      acceptingResponses, // true/false/null
     });
   } catch (err) {
     console.error(err);
@@ -564,6 +602,115 @@ app.get("/api/forms/:formId/info", async (req, res) => {
       message: err?.message || String(err),
     });
     return res.status(500).json({ error: "Failed to get form info" });
+  }
+});
+
+/* =========================
+   フォーム締切（回答受付停止）
+========================= */
+app.post("/api/forms/:formId/close", async (req, res) => {
+  const { formId } = req.params;
+  try {
+    if (!savedTokens) {
+      void logEvent({
+        type: "forms_close_rejected",
+        reason: "not_logged_in",
+        formId,
+      });
+      return res.status(401).json({ error: "Not logged in" });
+    }
+
+    void logEvent({ type: "forms_close_requested", formId });
+    oauth2Client.setCredentials(savedTokens);
+
+    const forms = google.forms({ version: "v1", auth: oauth2Client });
+    const drive = google.drive({ version: "v3", auth: oauth2Client });
+
+    // NOTE: Forms APIでは回答受付停止の切り替えが提供されていないため、
+    // タイトル（Forms/Drive）へ締切タグを付ける＝アプリ上で締切扱いとする。
+    const current = await forms.forms.get({ formId });
+    const currentTitle = current?.data?.info?.title || "";
+    if (currentTitle.includes(FORM_CLOSED_TAG)) {
+      return res.json({ formId, acceptingResponses: false });
+    }
+    const base = stripTagsFromTitle(currentTitle);
+    const nextTitle = `${FORM_NAME_TAG} ${FORM_CLOSED_TAG} ${base}`.trim();
+
+    await forms.forms.batchUpdate({
+      formId,
+      requestBody: {
+        requests: [
+          {
+            updateFormInfo: {
+              info: {
+                title: nextTitle,
+              },
+              updateMask: "title",
+            },
+          },
+        ],
+      },
+    });
+
+    // Drive側のファイル名も合わせる（検索/一覧用）
+    await drive.files.update({
+      fileId: formId,
+      requestBody: { name: nextTitle },
+    });
+
+    void logEvent({ type: "forms_close_succeeded", formId });
+    return res.json({ formId, acceptingResponses: false });
+  } catch (err) {
+    console.error(err);
+    const { status, message } = extractGoogleApiError(err);
+    void logEvent({
+      type: "forms_close_failed",
+      formId,
+      message,
+    });
+    return res
+      .status(status || 500)
+      .json({ error: message || "Failed to close form" });
+  }
+});
+
+/* =========================
+   フォーム削除（Driveのゴミ箱へ移動）
+========================= */
+app.post("/api/forms/:formId/trash", async (req, res) => {
+  const { formId } = req.params;
+  try {
+    if (!savedTokens) {
+      void logEvent({
+        type: "forms_trash_rejected",
+        reason: "not_logged_in",
+        formId,
+      });
+      return res.status(401).json({ error: "Not logged in" });
+    }
+
+    void logEvent({ type: "forms_trash_requested", formId });
+    oauth2Client.setCredentials(savedTokens);
+    const drive = google.drive({ version: "v3", auth: oauth2Client });
+
+    await drive.files.update({
+      fileId: formId,
+      requestBody: { trashed: true },
+    });
+
+    void logEvent({ type: "forms_trash_succeeded", formId });
+    return res.json({ formId, trashed: true });
+  } catch (err) {
+    console.error(err);
+    const { status, message } = extractGoogleApiError(err);
+    void logEvent({
+      type: "forms_trash_failed",
+      formId,
+      message,
+    });
+    return res
+      .status(status || 500)
+      .json({ error: message || "Failed to trash form" });
   }
 });
 
