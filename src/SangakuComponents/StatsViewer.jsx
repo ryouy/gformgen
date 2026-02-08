@@ -1,9 +1,10 @@
 // src/components/StatsViewer.jsx
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import DataTable from "./DataTable";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import fontData from "../assets/fonts/NotoSansJP-Regular.base64.txt?raw";
+import { Autocomplete, TextField } from "@mui/material";
 import {
   Link as LinkIcon,
   QrCode,
@@ -17,6 +18,15 @@ import { QRCodeCanvas } from "qrcode.react";
 const FORM_NAME_TAG_PREFIX = "[gformgen:sangaku]";
 const FORM_CLOSED_TAG = "[gformgen:closed]";
 const SELECTED_FORM_ID_STORAGE_KEY = "sangaku.selectedFormId";
+
+function notifyUnauthorized(message) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("gformgen:unauthorized", {
+      detail: { message },
+    })
+  );
+}
 
 function formatDateYMD(isoString) {
   if (!isoString) return "";
@@ -38,14 +48,23 @@ export default function StatsViewer({ initialFormId }) {
   const [listMode, setListMode] = useState("open"); // "open" | "closed"
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [formsError, setFormsError] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
+
+  const autoRefreshTimerRef = useRef(null);
+  const lastAutoRefreshAtRef = useRef(0);
+  const fetchInFlightRef = useRef(false);
 
   const fetchForms = useCallback(async () => {
     setFormsError(null);
     try {
       const res = await fetch("http://localhost:3000/api/forms/list");
+      if (res.status === 401) {
+        notifyUnauthorized();
+        throw new Error("Not logged in");
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Failed to list forms");
       const list = Array.isArray(data?.forms) ? data.forms : [];
@@ -67,6 +86,10 @@ export default function StatsViewer({ initialFormId }) {
       const res = await fetch(
         `http://localhost:3000/api/forms/${encodeURIComponent(formId)}/summary`
       );
+      if (res.status === 401) {
+        notifyUnauthorized();
+        throw new Error("Not logged in");
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Failed to get summary");
       const responseCount = Number(data?.responseCount);
@@ -107,6 +130,10 @@ export default function StatsViewer({ initialFormId }) {
       const res = await fetch(
         `http://localhost:3000/api/forms/${encodeURIComponent(formId)}/info`
       );
+      if (res.status === 401) {
+        notifyUnauthorized();
+        throw new Error("Not logged in");
+      }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Failed to get form info");
       setFormUrl(data?.formUrl || "");
@@ -121,15 +148,24 @@ export default function StatsViewer({ initialFormId }) {
   }, []);
 
   const fetchRows = useCallback(
-    async (formId) => {
+    async (formId, options = {}) => {
       if (!formId) return;
+      const silent = Boolean(options?.silent);
 
-      setLoading(true);
-      setError(null);
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      } else {
+        setRefreshing(true);
+      }
       try {
         const res = await fetch(
           `http://localhost:3000/api/forms/${encodeURIComponent(formId)}/responses`
         );
+        if (res.status === 401) {
+          notifyUnauthorized();
+          throw new Error("Not logged in");
+        }
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           const message = data?.error || "Failed to fetch responses";
@@ -148,10 +184,14 @@ export default function StatsViewer({ initialFormId }) {
         setRows(nextRows);
       } catch (e) {
         console.error(e);
-        setRows([]);
-        setError(e?.message || "Failed to fetch responses");
+        // タブ復帰時の自動更新では、UIをガクッと変えない（表示は維持）
+        if (!silent) {
+          setRows([]);
+          setError(e?.message || "Failed to fetch responses");
+        }
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
+        setRefreshing(false);
       }
     },
     []
@@ -192,35 +232,267 @@ export default function StatsViewer({ initialFormId }) {
   useEffect(() => {
     if (!selectedFormId) return;
 
-    const onFocus = () => {
-      if (!document.hidden) void fetchRows(selectedFormId);
-    };
-    const onVisibility = () => {
-      if (!document.hidden) void fetchRows(selectedFormId);
+    const schedule = () => {
+      if (document.hidden) return;
+      if (fetchInFlightRef.current) return;
+      const now = Date.now();
+      // focus + visibilitychange の二重発火を抑える（最低1.5秒あける）
+      if (now - lastAutoRefreshAtRef.current < 1500) return;
+
+      if (autoRefreshTimerRef.current) {
+        clearTimeout(autoRefreshTimerRef.current);
+      }
+      autoRefreshTimerRef.current = setTimeout(async () => {
+        // さらに短い間隔の連打を抑える
+        const t = Date.now();
+        if (t - lastAutoRefreshAtRef.current < 1500) return;
+        lastAutoRefreshAtRef.current = t;
+        fetchInFlightRef.current = true;
+        try {
+          await fetchRows(selectedFormId, { silent: true });
+        } finally {
+          fetchInFlightRef.current = false;
+        }
+      }, 120);
     };
 
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", schedule);
+    document.addEventListener("visibilitychange", schedule);
     return () => {
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", schedule);
+      document.removeEventListener("visibilitychange", schedule);
+      if (autoRefreshTimerRef.current) clearTimeout(autoRefreshTimerRef.current);
     };
   }, [selectedFormId, fetchRows]);
+
+  const normalizeTitle = useCallback(
+    (t) =>
+      String(t || "")
+        .replace(FORM_NAME_TAG_PREFIX, "")
+        .replace(FORM_CLOSED_TAG, "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    []
+  );
+
+  const truncate = useCallback((t, max = 14) => {
+    const s = String(t || "");
+    if (s.length <= max) return s;
+    return `${s.slice(0, max)}…`;
+  }, []);
+
+  const openForms = forms.filter((f) => f.acceptingResponses !== false);
+  const closedForms = forms.filter((f) => f.acceptingResponses === false);
+  const visibleForms = listMode === "closed" ? closedForms : openForms;
+  const selectedForm = forms.find((f) => f.formId === selectedFormId) || null;
+
+  const handleDownloadCsv = useCallback(() => {
+    const escape = (v) => {
+      const s = String(v ?? "");
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = [
+      "company",
+      "role",
+      "name",
+      "attendance",
+      "count",
+      "remarks",
+      "submittedAt",
+    ];
+    const lines = [
+      header.join(","),
+      ...rows.map((r) =>
+        [
+          r?.company,
+          r?.role,
+          r?.name,
+          r?.attendance,
+          r?.count,
+          r?.remarks,
+          r?.submittedAt,
+        ]
+          .map(escape)
+          .join(",")
+      ),
+    ];
+    const csv = `\uFEFF${lines.join("\n")}`;
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `responses_${selectedFormId}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, [rows, selectedFormId]);
+
+  const handleDownloadPdf = useCallback(() => {
+    const attending = rows.filter((r) => r?.attendance === "出席");
+    if (attending.length === 0) {
+      alert("出席者データがありません。");
+      return;
+    }
+
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+
+    pdf.addFileToVFS("NotoSansJP-Regular.ttf", fontData);
+    pdf.addFont("NotoSansJP-Regular.ttf", "NotoSansJP", "normal");
+    pdf.setFont("NotoSansJP", "normal");
+
+    pdf.setFontSize(16);
+    pdf.text(meetingTitle || "会合名未設定", 14, 18);
+    pdf.setFontSize(14);
+    pdf.text("出席者一覧", 14, 28);
+
+    const headers = [["No", "事業所名", "役職名", "氏名", "人数"]];
+    const body = attending.map((p, i) => [
+      String(i + 1),
+      p.company || "",
+      p.role || "ー",
+      p.name || "",
+      String(Number(p?.count) || 1),
+    ]);
+
+    pdf.autoTable({
+      startY: 36,
+      head: headers,
+      body,
+      styles: {
+        font: "NotoSansJP",
+        fontSize: 10.5,
+        halign: "center",
+        valign: "middle",
+        cellPadding: { top: 4, bottom: 4 },
+        textColor: [30, 30, 30],
+        lineColor: [220, 220, 220],
+        lineWidth: 0.25,
+      },
+      headStyles: {
+        fillColor: [240, 242, 245],
+        textColor: [30, 30, 30],
+        fontStyle: "bold",
+      },
+      columnStyles: {
+        0: { halign: "center", cellWidth: 10 },
+        1: { halign: "center", cellWidth: 60 },
+        2: { halign: "center", cellWidth: 25 },
+        3: { halign: "center", cellWidth: 35 },
+        4: { halign: "center", cellWidth: 15 },
+      },
+      theme: "grid",
+      margin: { left: 12, right: 12 },
+    });
+
+    const attendanceCompanies = new Set(
+      attending.map((p) => (p?.company || "").trim()).filter(Boolean)
+    ).size;
+    const totalAttendance = attending.reduce(
+      (sum, p) => sum + (Number(p?.count) || 1),
+      0
+    );
+
+    const y = pdf.lastAutoTable.finalY + 10;
+    pdf.setFontSize(11);
+    pdf.text(
+      `出席事業所数：${attendanceCompanies} ｜ 合計出席人数：${totalAttendance}`,
+      pdf.internal.pageSize.getWidth() / 2,
+      y,
+      { align: "center" }
+    );
+
+    pdf.save(`${meetingTitle || "出席者一覧"}.pdf`);
+  }, [rows, meetingTitle]);
+
+  const handleCloseForm = useCallback(async () => {
+    if (!selectedFormId) return;
+    if (
+      !window.confirm("このフォームを締切済みにします（アプリ上の締切扱い）。よろしいですか？")
+    )
+      return;
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/forms/${encodeURIComponent(selectedFormId)}/close`,
+        { method: "POST" }
+      );
+      if (res.status === 401) {
+        notifyUnauthorized();
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.error || "Failed to close form";
+        const err = new Error(msg);
+        err.status = res.status;
+        throw err;
+      }
+      setAcceptingResponses(false);
+      setListMode("closed");
+      void fetchForms();
+    } catch (e) {
+      console.error(e);
+      if (e?.status === 401) {
+        alert(
+          "締切に失敗しました（未ログイン）。\nバックエンドを再起動するとログインが切れるため、ホーム画面からGoogleログインし直してください。"
+        );
+      } else {
+        alert(`締切に失敗しました：${e?.message || "unknown error"}`);
+      }
+    }
+  }, [selectedFormId, fetchForms]);
+
+  const handleTrashForm = useCallback(async () => {
+    if (!selectedFormId) return;
+    if (!window.confirm("このフォームを削除（Driveのゴミ箱へ移動）します。よろしいですか？"))
+      return;
+    try {
+      const res = await fetch(
+        `http://localhost:3000/api/forms/${encodeURIComponent(selectedFormId)}/trash`,
+        { method: "POST" }
+      );
+      if (res.status === 401) {
+        notifyUnauthorized();
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.error || "Failed to trash form";
+        const err = new Error(msg);
+        err.status = res.status;
+        throw err;
+      }
+
+      setSelectedFormId("");
+      setRows([]);
+      setFormUrl("");
+      setAcceptingResponses(null);
+      window.localStorage.removeItem(SELECTED_FORM_ID_STORAGE_KEY);
+      void fetchForms();
+    } catch (e) {
+      console.error(e);
+      if (e?.status === 401) {
+        alert(
+          "削除に失敗しました（未ログイン）。\nバックエンドを再起動するとログインが切れるため、ホーム画面からGoogleログインし直してください。"
+        );
+      } else {
+        alert(`削除に失敗しました：${e?.message || "unknown error"}`);
+      }
+    }
+  }, [selectedFormId, fetchForms]);
 
   return (
     <div className="stats-viewer">
       {/* 上部：既存フォーム選択 + 操作（リンク/QR/CSV/PDF/締切/削除） */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "1rem",
-          flexWrap: "wrap",
-          marginBottom: "1rem",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      <div className="stats-toolbar">
+        <div className="stats-toolbar-row stats-toolbar-row-top">
+          <div className="stats-toolbar-left">
           <div className="mini-tabs" role="tablist" aria-label="フォーム一覧切替">
             <button
               type="button"
@@ -262,13 +534,14 @@ export default function StatsViewer({ initialFormId }) {
             </button>
           </div>
 
-          <select
-            value={selectedFormId}
-            onChange={(e) => {
-              const id = e.target.value;
-              // 選択に合わせてリストモードも寄せる
-              const f = forms.find((x) => x.formId === id);
-              if (f) setListMode(f.acceptingResponses === false ? "closed" : "open");
+          <Autocomplete
+            value={selectedForm}
+            options={visibleForms}
+            getOptionLabel={(opt) => normalizeTitle(opt?.title)}
+            isOptionEqualToValue={(a, b) => a?.formId === b?.formId}
+            onChange={(_, next) => {
+              const id = next?.formId || "";
+              if (next) setListMode(next.acceptingResponses === false ? "closed" : "open");
               setSelectedFormId(id);
               setError(null);
               setFormUrl("");
@@ -279,63 +552,71 @@ export default function StatsViewer({ initialFormId }) {
                 return;
               }
               window.localStorage.setItem(SELECTED_FORM_ID_STORAGE_KEY, id);
-              // await せず並列で走らせて、空表示のチラつきを避ける
               void fetchSummary(id);
               void fetchFormInfo(id);
               void fetchRows(id);
             }}
-            style={{
-              maxWidth: 380,
-              padding: "0.45rem 0.7rem",
-              borderRadius: 12,
-              border: "1px solid rgba(148,163,184,0.6)",
-              background: "#fff",
+            renderOption={(props, option) => {
+              const title = normalizeTitle(option?.title);
+              const ymd = formatDateYMD(option?.createdTime);
+              const s = summaries?.[option?.formId];
+              return (
+                <li {...props} key={option.formId} style={{ padding: "10px 12px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ fontWeight: 700, color: "#0f172a" }}>
+                      {truncate(title, 18)}
+                    </div>
+                    <div style={{ fontSize: "0.82rem", fontWeight: 800, color: "#64748b" }}>
+                      {`出席:${s ? s.attendeeCount : "…"}人 / 回答:${
+                        s ? s.responseCount : "…"
+                      }件`}
+                      {ymd ? ` ・ ${ymd}` : ""}
+                    </div>
+                  </div>
+                </li>
+              );
             }}
-            aria-label="既存フォームを選択"
-          >
-            <option value="">既存フォームを選択</option>
-            {(() => {
-              const normalizeTitle = (t) =>
-                String(t || "")
-                  .replace(FORM_NAME_TAG_PREFIX, "")
-                  .replace(FORM_CLOSED_TAG, "")
-                  .replace(/\s+/g, " ")
-                  .trim();
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                placeholder="既存フォームを選択"
+                size="small"
+                sx={{
+                  width: { xs: "92vw", sm: 420 },
+                  minWidth: { xs: 220, sm: 320 },
+                  "& .MuiOutlinedInput-root": {
+                    borderRadius: "14px",
+                    background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+                    boxShadow: "0 2px 10px rgba(15,23,42,0.06)",
+                    fontWeight: 700,
+                  },
+                  "& .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "rgba(148, 163, 184, 0.6)",
+                  },
+                  "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "rgba(59,130,246,0.55)",
+                  },
+                  "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                    borderColor: "rgba(59,130,246,0.8)",
+                  },
+                }}
+              />
+            )}
+            slotProps={{
+              paper: {
+                sx: {
+                  borderRadius: "16px",
+                  border: "1px solid rgba(148,163,184,0.35)",
+                  boxShadow: "0 18px 44px rgba(15,23,42,0.18)",
+                  overflow: "hidden",
+                },
+              },
+            }}
+          />
+          </div>
 
-              const truncate = (t, max = 12) => {
-                const s = String(t || "");
-                if (s.length <= max) return s;
-                return `${s.slice(0, max)}…`;
-              };
-
-              const open = forms.filter((f) => f.acceptingResponses !== false);
-              const closed = forms.filter((f) => f.acceptingResponses === false);
-              const list = listMode === "closed" ? closed : open;
-
-              const render = (list) =>
-                list.map((f) => {
-                  const title = normalizeTitle(f.title);
-                  const ymd = formatDateYMD(f.createdTime);
-                  const s = summaries?.[f.formId];
-                  const summaryText = s
-                    ? ` 出席:${s.attendeeCount}人 / 回答:${s.responseCount}件`
-                    : " 出席:…人 / 回答:…件";
-                  return (
-                    <option key={f.formId} value={f.formId}>
-                      {truncate(title, 12)}
-                      {summaryText}
-                      {ymd ? `（${ymd}）` : ""}
-                    </option>
-                  );
-                });
-
-              return render(list);
-            })()}
-          </select>
-        </div>
-
-        {selectedFormId && formUrl ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {selectedFormId && formUrl ? (
+          <div className="stats-toolbar-right">
             {/* 状態 */}
             <span
               style={{
@@ -346,6 +627,11 @@ export default function StatsViewer({ initialFormId }) {
             >
               {acceptingResponses === false ? "締切済み" : "受付中"}
             </span>
+            {refreshing && (
+              <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 800 }}>
+                更新中…
+              </span>
+            )}
 
             {/* フォームへのリンク */}
             <span className="tooltip-wrap">
@@ -393,299 +679,58 @@ export default function StatsViewer({ initialFormId }) {
               </button>
               <span className="tooltip-bubble">QRを表示</span>
             </span>
-
-          {/* CSV */}
-            <span className="tooltip-wrap">
-              <button
-                type="button"
-                onClick={() => {
-                  const escape = (v) => {
-                    const s = String(v ?? "");
-                    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-                  };
-                  const header = [
-                    "company",
-                    "role",
-                    "name",
-                    "attendance",
-                    "count",
-                    "remarks",
-                    "submittedAt",
-                  ];
-                  const lines = [
-                    header.join(","),
-                    ...rows.map((r) =>
-                      [
-                        r?.company,
-                        r?.role,
-                        r?.name,
-                        r?.attendance,
-                        r?.count,
-                        r?.remarks,
-                        r?.submittedAt,
-                      ]
-                        .map(escape)
-                        .join(",")
-                    ),
-                  ];
-                  const csv = `\uFEFF${lines.join("\n")}`;
-                  const blob = new Blob([csv], {
-                    type: "text/csv;charset=utf-8;",
-                  });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `responses_${selectedFormId}.csv`;
-                  document.body.appendChild(a);
-                  a.click();
-                  a.remove();
-                  URL.revokeObjectURL(url);
-                }}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 38,
-                  height: 38,
-                  borderRadius: 12,
-                  border: "1px solid rgba(148,163,184,0.6)",
-                  background: "#fff",
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-              >
-                <Download size={18} />
-              </button>
-              <span className="tooltip-bubble">CSVダウンロード</span>
-            </span>
-
-            {/* PDF */}
-            <span className="tooltip-wrap">
-              <button
-                type="button"
-                onClick={() => {
-                  const attending = rows.filter((r) => r?.attendance === "出席");
-                  if (attending.length === 0) {
-                    alert("出席者データがありません。");
-                    return;
-                  }
-
-                  const pdf = new jsPDF({
-                    orientation: "portrait",
-                    unit: "mm",
-                    format: "a4",
-                  });
-
-                  pdf.addFileToVFS("NotoSansJP-Regular.ttf", fontData);
-                  pdf.addFont("NotoSansJP-Regular.ttf", "NotoSansJP", "normal");
-                  pdf.setFont("NotoSansJP", "normal");
-
-                  pdf.setFontSize(16);
-                  pdf.text(meetingTitle || "会合名未設定", 14, 18);
-                  pdf.setFontSize(14);
-                  pdf.text("出席者一覧", 14, 28);
-
-                  const headers = [["No", "事業所名", "役職名", "氏名", "人数"]];
-                  const body = attending.map((p, i) => [
-                    String(i + 1),
-                    p.company || "",
-                    p.role || "ー",
-                    p.name || "",
-                    String(Number(p?.count) || 1),
-                  ]);
-
-                  pdf.autoTable({
-                    startY: 36,
-                    head: headers,
-                    body,
-                    styles: {
-                      font: "NotoSansJP",
-                      fontSize: 10.5,
-                      halign: "center",
-                      valign: "middle",
-                      cellPadding: { top: 4, bottom: 4 },
-                      textColor: [30, 30, 30],
-                      lineColor: [220, 220, 220],
-                      lineWidth: 0.25,
-                    },
-                    headStyles: {
-                      fillColor: [240, 242, 245],
-                      textColor: [30, 30, 30],
-                      fontStyle: "bold",
-                    },
-                    columnStyles: {
-                      0: { halign: "center", cellWidth: 10 },
-                      1: { halign: "center", cellWidth: 60 },
-                      2: { halign: "center", cellWidth: 25 },
-                      3: { halign: "center", cellWidth: 35 },
-                      4: { halign: "center", cellWidth: 15 },
-                    },
-                    theme: "grid",
-                    margin: { left: 12, right: 12 },
-                  });
-
-                  const attendanceCompanies = new Set(
-                    attending
-                      .map((p) => (p?.company || "").trim())
-                      .filter(Boolean)
-                  ).size;
-                  const totalAttendance = attending.reduce(
-                    (sum, p) => sum + (Number(p?.count) || 1),
-                    0
-                  );
-
-                  const y = pdf.lastAutoTable.finalY + 10;
-                  pdf.setFontSize(11);
-                  pdf.text(
-                    `出席事業所数：${attendanceCompanies} ｜ 合計出席人数：${totalAttendance}`,
-                    pdf.internal.pageSize.getWidth() / 2,
-                    y,
-                    { align: "center" }
-                  );
-
-                  pdf.save(`${meetingTitle || "出席者一覧"}.pdf`);
-                }}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 38,
-                  height: 38,
-                  borderRadius: 12,
-                  border: "1px solid rgba(148,163,184,0.6)",
-                  background: "#fff",
-                  cursor: "pointer",
-                  padding: 0,
-                }}
-              >
-                <FileText size={18} />
-              </button>
-              <span className="tooltip-bubble">PDFダウンロード</span>
-            </span>
-
-          {/* 締切 */}
-            <span className="tooltip-wrap">
-              <button
-                type="button"
-                disabled={acceptingResponses === false}
-                onClick={async () => {
-                  if (!selectedFormId) return;
-                  if (
-                    !window.confirm(
-                      "このフォームを締切済みにします（アプリ上の締切扱い）。よろしいですか？"
-                    )
-                  )
-                    return;
-                  try {
-                    const res = await fetch(
-                      `http://localhost:3000/api/forms/${encodeURIComponent(
-                        selectedFormId
-                      )}/close`,
-                      { method: "POST" }
-                    );
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok) {
-                      const msg = data?.error || "Failed to close form";
-                      const err = new Error(msg);
-                      err.status = res.status;
-                      throw err;
-                    }
-                    setAcceptingResponses(false);
-                    setListMode("closed");
-                    void fetchForms();
-                  } catch (e) {
-                    console.error(e);
-                    if (e?.status === 401) {
-                      alert(
-                        "締切に失敗しました（未ログイン）。\nバックエンドを再起動するとログインが切れるため、ホーム画面からGoogleログインし直してください。"
-                      );
-                    } else {
-                      alert(`締切に失敗しました：${e?.message || "unknown error"}`);
-                    }
-                  }
-                }}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 38,
-                  height: 38,
-                  borderRadius: 12,
-                  border: "1px solid rgba(148,163,184,0.6)",
-                  background: "#fff",
-                  cursor: "pointer",
-                  padding: 0,
-                  opacity: acceptingResponses === false ? 0.5 : 1,
-                }}
-              >
-                <Lock size={18} />
-              </button>
-              <span className="tooltip-bubble">締切</span>
-            </span>
-
-          {/* 削除（ゴミ箱） */}
-            <span className="tooltip-wrap">
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!selectedFormId) return;
-                  if (
-                    !window.confirm(
-                      "このフォームを削除（Driveのゴミ箱へ移動）します。よろしいですか？"
-                    )
-                  )
-                    return;
-                  try {
-                    const res = await fetch(
-                      `http://localhost:3000/api/forms/${encodeURIComponent(
-                        selectedFormId
-                      )}/trash`,
-                      { method: "POST" }
-                    );
-                    const data = await res.json().catch(() => ({}));
-                    if (!res.ok) {
-                      const msg = data?.error || "Failed to trash form";
-                      const err = new Error(msg);
-                      err.status = res.status;
-                      throw err;
-                    }
-                    // 選択解除＆再discover
-                    setSelectedFormId("");
-                    setFormUrl("");
-                    setAcceptingResponses(null);
-                    setRows([]);
-                    window.localStorage.removeItem(SELECTED_FORM_ID_STORAGE_KEY);
-                    void fetchForms();
-                  } catch (e) {
-                    console.error(e);
-                    if (e?.status === 401) {
-                      alert(
-                        "削除に失敗しました（未ログイン）。\nバックエンドを再起動するとログインが切れるため、ホーム画面からGoogleログインし直してください。"
-                      );
-                    } else {
-                      alert(`削除に失敗しました：${e?.message || "unknown error"}`);
-                    }
-                  }
-                }}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 38,
-                  height: 38,
-                  borderRadius: 12,
-                  border: "1px solid rgba(148,163,184,0.6)",
-                  background: "#fff",
-                  cursor: "pointer",
-                  padding: 0,
-                  color: "#ef4444",
-                }}
-              >
-                <Trash2 size={18} />
-              </button>
-              <span className="tooltip-bubble">削除</span>
-            </span>
+          </div>
+        ) : null}
         </div>
+
+        {selectedFormId && formUrl ? (
+          <div className="stats-toolbar-row stats-toolbar-row-bottom">
+            <div className="stats-toolbar-bottom-spacer" />
+            {/* 出力 / 管理（グループ化・非プルダウン） */}
+            <div className="stats-action-groups" aria-label="フォーム操作">
+              <div className="stats-action-group" aria-label="出力">
+                <button
+                  type="button"
+                  className="stats-action-chip"
+                  onClick={handleDownloadCsv}
+                >
+                  <Download size={16} />
+                  <span className="stats-action-chip-label">CSV</span>
+                </button>
+                <button
+                  type="button"
+                  className="stats-action-chip"
+                  onClick={handleDownloadPdf}
+                >
+                  <FileText size={16} />
+                  <span className="stats-action-chip-label">PDF</span>
+                </button>
+              </div>
+
+              <div className="stats-action-divider" aria-hidden="true" />
+
+              <div className="stats-action-group" aria-label="管理">
+                <button
+                  type="button"
+                  className="stats-action-chip"
+                  disabled={acceptingResponses === false}
+                  onClick={handleCloseForm}
+                  style={{ opacity: acceptingResponses === false ? 0.55 : 1 }}
+                >
+                  <Lock size={16} />
+                  <span className="stats-action-chip-label">締切</span>
+                </button>
+                <button
+                  type="button"
+                  className="stats-action-chip is-danger"
+                  onClick={handleTrashForm}
+                >
+                  <Trash2 size={16} />
+                  <span className="stats-action-chip-label">削除</span>
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
       </div>
 
@@ -699,7 +744,7 @@ export default function StatsViewer({ initialFormId }) {
         <p style={{ textAlign: "center", marginTop: "1rem" }}>
           既存フォームを選択してください
         </p>
-      ) : loading ? (
+      ) : loading && rows.length === 0 ? (
         <p style={{ textAlign: "center", marginTop: "1rem" }}>読み込み中…</p>
       ) : error ? (
         <p style={{ color: "red", textAlign: "center", marginTop: "1rem" }}>

@@ -70,6 +70,17 @@ export default function FormEditor({
         }),
       });
 
+      if (res.status === 401) {
+        window.dispatchEvent(
+          new CustomEvent("gformgen:unauthorized", {
+            detail: {
+              message:
+                "バックエンドが更新/再起動されたため、ログイン状態が切れました。ホーム画面から再ログインしてください。",
+            },
+          })
+        );
+        throw new Error("Not logged in");
+      }
       if (!res.ok) throw new Error("API error");
 
       const data = await res.json();
@@ -132,7 +143,7 @@ export default function FormEditor({
             onChange={handleChange}
             fullWidth
           >
-            {[1, 2, 3, 5].map((n) => (
+            {[1, 2, 3, 4, 5].map((n) => (
               <MenuItem key={n} value={n}>
                 {n} 人分
               </MenuItem>

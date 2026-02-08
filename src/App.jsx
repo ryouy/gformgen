@@ -6,6 +6,7 @@ import "./App.css";
 export default function App() {
   const [selectedApp, setSelectedApp] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [logoutNoticeShown, setLogoutNoticeShown] = useState(false);
 
   // 🔁 永続化されたログイン状態を読み込み
   useEffect(() => {
@@ -37,8 +38,37 @@ export default function App() {
       setIsLoggedIn(false);
       setSelectedApp(null);
       window.localStorage.removeItem("isLoggedIn");
+      window.localStorage.removeItem("sangaku.selectedFormId");
     }
   };
+
+  // バックエンド再起動などで 401 が出たら、フロントを強制的に未ログインへ戻す
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onUnauthorized = (ev) => {
+      // 多重発火（複数APIが同時に401）でアラート連打しない
+      const showNotice = !logoutNoticeShown;
+      setLogoutNoticeShown(true);
+
+      setIsLoggedIn(false);
+      setSelectedApp(null);
+      window.localStorage.removeItem("isLoggedIn");
+      window.localStorage.removeItem("sangaku.selectedFormId");
+
+      if (showNotice) {
+        const msg =
+          ev?.detail?.message ||
+          "バックエンドが更新/再起動されたため、ログイン状態が切れました。ホーム画面から再ログインしてください。";
+        window.alert(msg);
+      }
+    };
+
+    window.addEventListener("gformgen:unauthorized", onUnauthorized);
+    return () => {
+      window.removeEventListener("gformgen:unauthorized", onUnauthorized);
+    };
+  }, [logoutNoticeShown]);
 
   // 🏠 ホーム画面
   if (!selectedApp) {

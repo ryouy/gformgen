@@ -3,6 +3,18 @@ import { useState } from "react";
 export default function DataTable({ participants }) {
   const [expanded, setExpanded] = useState(false);
 
+  const formatSubmittedAt = (isoString) => {
+    if (!isoString) return "—";
+    const d = new Date(isoString);
+    if (Number.isNaN(d.getTime())) return "—";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${y}/${m}/${day} ${hh}:${mm}`;
+  };
+
   const isAttending = (p) => p?.attendance === "出席";
   const attending = participants.filter(isAttending);
 
@@ -33,6 +45,7 @@ export default function DataTable({ participants }) {
               <th>氏名</th>
               <th>出席/欠席</th>
               <th>人数</th>
+              <th>送信日時</th>
             </tr>
           </thead>
           <tbody>
@@ -48,13 +61,16 @@ export default function DataTable({ participants }) {
                   <td>{p.name || ""}</td>
                   <td>{attendingLabel}</td>
                   <td>{Number.isFinite(Number(p?.count)) ? Number(p?.count) : 0}</td>
+                  <td className="submitted-at-cell">
+                    {formatSubmittedAt(p?.submittedAt)}
+                  </td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
             <tr>
-              <th colSpan="2">合計</th>
+              <th colSpan="3">合計</th>
               <th>出席事業所数：{attendanceCompanies}</th>
               <th colSpan="2">出席人数：{totalAttendance}</th>
             </tr>
