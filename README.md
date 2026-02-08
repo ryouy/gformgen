@@ -93,5 +93,4 @@ cd .. && npm run dev
 
 ## Philosophy
 
-> Treat Google Drive as the database.
-> Everything else is just a view.
+## Treat Google Drive as the database. Everything else is just a view.
