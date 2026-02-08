@@ -48,7 +48,7 @@ export default function Home({ onSelectApp, isLoggedIn, onLogin, onLogout }) {
             className={`app-card ${!isLoggedIn ? "disabled" : ""}`}
             onClick={() => isLoggedIn && onSelectApp("other")}
           >
-            <h2>その他会合用</h2>
+            <h2>その他sdfdfs</h2>
           </div>
           <div className="app-info">
             <p>最終更新日：2025年10月18日</p>
