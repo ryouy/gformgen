@@ -41,23 +41,6 @@ export default function Home({ onSelectApp, isLoggedIn, onLogin, onLogout }) {
             </ul>
           </div>
         </div>
-
-        {/* 🟩 その他会合ツール */}
-        <div className="app-item">
-          <div
-            className={`app-card ${!isLoggedIn ? "disabled" : ""}`}
-            onClick={() => isLoggedIn && onSelectApp("other")}
-          >
-            <h2>その他sdfdfs</h2>
-          </div>
-          <div className="app-info">
-            <p>最終更新日：2025年10月18日</p>
-            <ul>
-              <li>日付選択UIをMUI X Pickerに刷新</li>
-              <li>集計リストをPDF出力対応</li>
-            </ul>
-          </div>
-        </div>
       </div>
 
       {/* 🧑‍💻 フッター署名 */}

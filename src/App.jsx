@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import Home from "./pages/Home";
 import AppMain from "./SangakuComponents/AppMain";
-import AnalysisAppMain from "./OtherComponents/AppMain";
 import "./App.css";
 
 export default function App() {
@@ -58,12 +57,17 @@ export default function App() {
   // 🧩 アプリ分岐
   if (selectedApp === "sangaku") {
     return <AppMain theme="sangaku" onGoHome={() => setSelectedApp(null)} />;
-  } else {
-    return (
-      <AnalysisAppMain
-        theme={selectedApp}
-        onGoHome={() => setSelectedApp(null)}
-      />
-    );
   }
+
+  // その他会合用は廃止
+  return (
+    <Home
+      onSelectApp={setSelectedApp}
+      isLoggedIn={isLoggedIn}
+      onLogin={() => {
+        window.location.href = "http://localhost:3000/auth/google";
+      }}
+      onLogout={handleLogout}
+    />
+  );
 }
