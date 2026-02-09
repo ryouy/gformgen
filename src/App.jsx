@@ -10,7 +10,7 @@ export default function App() {
   });
   const [logoutNoticeShown, setLogoutNoticeShown] = useState(false);
 
-  const syncLoginStateFromServer = async () => {
+  const syncLoginStateFromServer = async ({ keepCurrentOnError = false } = {}) => {
     try {
       const res = await fetch(authUrl("/auth/me"), { credentials: "include" });
       if (!res.ok) throw new Error("me_failed");
@@ -22,36 +22,106 @@ export default function App() {
         if (loggedIn) window.localStorage.setItem("isLoggedIn", "true");
         else window.localStorage.removeItem("isLoggedIn");
       }
+      return { ok: true, loggedIn };
     } catch {
-      // If backend is unreachable, treat as logged out on UI to avoid stale state.
-      setIsLoggedIn(false);
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("isLoggedIn");
+      // Backend unreachable / cold start etc.
+      if (!keepCurrentOnError) {
+        // Default: treat as logged out to avoid stale UI.
+        setIsLoggedIn(false);
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("isLoggedIn");
+        }
       }
+      return { ok: false, loggedIn: null };
     }
   };
 
-  // 🔁 起動時にサーバ基準でログイン状態を同期
+  // 🔁 起動時にサーバ基準でログイン状態を同期（OAuth直後はコールドスタート対策でリトライ）
   useEffect(() => {
-    void syncLoginStateFromServer();
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const justLoggedIn = params.get("login") === "success";
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    const run = async () => {
+      if (justLoggedIn) {
+        // まずはUIをログイン扱いに（/auth/me が一瞬失敗してもサイドバーが古いままにならない）
+        setIsLoggedIn(true);
+        try {
+          window.localStorage.setItem("isLoggedIn", "true");
+        } catch {
+          // ignore
+        }
+
+        // URLをきれいにする（login=success を消す。配信パス（BASE_URL）を壊さない）
+        try {
+          const u = new URL(window.location.href);
+          u.searchParams.delete("login");
+          window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
+        } catch {
+          // ignore
+        }
+
+        // コールドスタート等で /auth/me が落ちることがあるので、少しリトライする
+        for (let i = 0; i < 3; i += 1) {
+          const r = await syncLoginStateFromServer({ keepCurrentOnError: true });
+          if (r.ok && r.loggedIn === true) return;
+          await sleep(350 * 2 ** i);
+        }
+        // 最後に通常同期（ダメなら未ログインへ）
+        await syncLoginStateFromServer({ keepCurrentOnError: false });
+        return;
+      }
+
+      await syncLoginStateFromServer({ keepCurrentOnError: false });
+    };
+
+    void run();
   }, []);
 
-  // ★ OAuth成功後の判定
+  // Safari等で OAuth 後に BFCache から復帰すると、初期useEffectが再実行されずUIが古いままになることがある。
+  // pageshow で復帰を検知してログイン状態を再同期する。
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("login") === "success") {
-      // サーバ側にセッションが作られている前提なので、サーバ基準で同期する
-      void syncLoginStateFromServer();
+    if (typeof window === "undefined") return;
 
-      // URLをきれいにする（login=success を消す。配信パス（BASE_URL）を壊さない）
-      try {
-        const u = new URL(window.location.href);
-        u.searchParams.delete("login");
-        window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
-      } catch {
-        // ignore
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    const onPageShow = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const justLoggedIn = params.get("login") === "success";
+
+      if (justLoggedIn) {
+        setIsLoggedIn(true);
+        try {
+          window.localStorage.setItem("isLoggedIn", "true");
+        } catch {
+          // ignore
+        }
+
+        try {
+          const u = new URL(window.location.href);
+          u.searchParams.delete("login");
+          window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
+        } catch {
+          // ignore
+        }
+
+        for (let i = 0; i < 3; i += 1) {
+          const r = await syncLoginStateFromServer({ keepCurrentOnError: true });
+          if (r.ok && r.loggedIn === true) return;
+          await sleep(350 * 2 ** i);
+        }
+        await syncLoginStateFromServer({ keepCurrentOnError: false });
+        return;
       }
-    }
+
+      // 通常復帰でも一度同期しておく
+      await syncLoginStateFromServer({ keepCurrentOnError: false });
+    };
+
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
   }, []);
 
   // 念のため：存在しないホームパスに戻されてもアプリ入口（BASE_URL）に寄せる
@@ -91,8 +161,6 @@ export default function App() {
     if (typeof window === "undefined") return;
 
     const onUnauthorized = (ev) => {
-      // 多重発火（複数APIが同時に401）でアラート連打しない
-      const showNotice = !logoutNoticeShown;
       setLogoutNoticeShown(true);
 
       const wasLoggedIn =
@@ -102,13 +170,12 @@ export default function App() {
       window.localStorage.removeItem("isLoggedIn");
       window.localStorage.removeItem("sangaku.selectedFormId");
 
-      if (showNotice) {
-        const fallback = wasLoggedIn
-          ? "ログイン状態が切れました。サイドバーの「ログイン」から再ログインしてください。"
-          : "ログインが必要です。サイドバーの「ログイン」からログインしてください。";
-        const msg = ev?.detail?.message || fallback;
-        window.alert(msg);
-      }
+      // ポップアップは出さない（うるさいため）。必要ならコンソールにだけ残す。
+      const fallback = wasLoggedIn
+        ? "ログイン状態が切れました。再ログインしてください。"
+        : "ログインが必要です。";
+      const msg = ev?.detail?.message || fallback;
+      console.info("[auth] unauthorized:", msg);
     };
 
     window.addEventListener("gformgen:unauthorized", onUnauthorized);

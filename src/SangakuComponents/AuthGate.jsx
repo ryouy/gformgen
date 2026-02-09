@@ -45,9 +45,7 @@ export default function AuthGate({ tab, onLogin, onGoSettings }) {
           )}
         </div>
 
-        <div className="auth-gate-hint">
-          ※ 左のサイドバーからもログインできます
-        </div>
+        
       </motion.div>
     </div>
   );

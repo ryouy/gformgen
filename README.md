@@ -1,256 +1,231 @@
 
----
+## FCT Form Management Tool (`gformgen`)
 
-# gform-gen
+An admin-facing web app for **creating, sharing, and aggregating attendance Google Forms**.
 
-A small admin tool to **programmatically create, rediscover, and aggregate Google Forms**.
+- **No DB**: Google Drive + Google Forms are the source of truth
+- **Operational UX**: create → share (link/QR) → aggregate → export (CSV/PDF)
+- **Serverless-friendly**: designed to run on Firebase Hosting + Functions (or any Node host)
 
-* **No database**
-* **Google Drive / Forms as the single source of truth**
-* **Stateless by design**
-
-[Live demo](https://gformgen.vercel.app/)
+> The in-app “Manual” (`説明書`) is a user guide. This README is for engineers operating/deploying the system.
 
 ---
 
-## What it does
+### Features (product)
 
-* Create meeting-specific Google Forms via API
-* Fetch and aggregate **real Google Forms responses**
-* Rediscover previously created forms from Google Drive
-* Switch between multiple forms without persistence
-* Export attendee lists as PDF
-* Share forms via link or QR code
-
----
-
-## Design principles
-
-* **Stateless**
-
-  * No form metadata is stored
-  * Google Drive / Forms is the only persistent layer
-* **Identifiable forms**
-
-  * Forms are tagged in their titles (e.g. `[gformgen:sangaku]`)
-  * Enables Drive-based discovery without a DB
-* **Clear separation of concerns**
-
-  * Form creation: `FormEditor`
-  * Aggregation & sharing: `StatsViewer`
-* **Safe UX**
-
-  * Creation and aggregation flows are intentionally separated
+- **Programmatic Google Form creation** (meeting title, datetime, deadline, place, host, participant count)
+- **Share via link and QR**
+- **Response aggregation** (attendance, remarks, non-responders)
+- **Exports**
+  - CSV (Excel-friendly; multi-person fields are exported with **cell-internal newlines**)
+  - PDF (print-ready; multi-person fields render as **multi-line cells**)
+- **Admin operations**
+  - “Close” (app-level closed state)
+  - “Trash” (move to Drive trash)
+- **Responsive UI** for mobile + desktop
+- **In-app manual** as a separate page (cards → detail view)
 
 ---
 
-## Tech stack
+### Screenshots (optional, but recommended for ops handoff)
 
-* Frontend: React + Vite
-* Backend: Node.js + Express
-* Google APIs:
+Put screenshots under `docs/screenshots/` and reference them here, e.g.:
 
-  * OAuth 2.0
-  * Forms API
-  * Drive API
-* PDF: `jspdf`, `jspdf-autotable`
-* QR: `qrcode.react`
+- `docs/screenshots/form-create.png` (Form creation)
+- `docs/screenshots/stats-toolbar.png` (Stats toolbar: open/closed + picker + actions)
+- `docs/screenshots/exports.png` (CSV/PDF export)
+- `docs/screenshots/manual.png` (In-app manual)
+
+This repo intentionally keeps the README text-first so it remains usable in terminals/CI logs.
 
 ---
 
-## Running locally
+### Tech stack
+
+- **Frontend**: React (Vite), MUI, framer-motion, lucide icons
+- **Backend**: Node.js (20) + Express (deployed as Firebase Function or standalone)
+- **Google APIs**: OAuth2, Forms API, Drive API
+- **PDF**: `jspdf`, `jspdf-autotable`
+- **QR**: `qrcode.react`
+
+---
+
+### Architecture (high level)
+
+- The frontend talks to:
+  - **`/api/*`** for application endpoints (forms list/summary/create/etc.)
+  - **`/auth/*`** for OAuth (login/logout/me)
+- Forms are **discoverable** without a database by tagging/metadata (Drive/Forms).
+- **Single-admin model** (by design): tokens are treated as a single logical admin session.
+
+---
+
+### Operational semantics: “Close” vs Google Forms “Stop accepting responses”
+
+This app’s **Close** is intentionally **app-level**, not a Google Forms setting.
+
+- **Close (app-level)**
+  - Marks the form as “closed” in *this app* (so it moves to the “Closed” list)
+  - Keeps the underlying Google Form usable unless you manually disable it in Google Forms
+
+- **Stop accepting responses (Google Forms)**
+  - A Google Forms setting that prevents any further submissions
+  - Not controlled by this app (by design, to keep API scope and UX simple)
+
+If you need true “hard close”, implement it explicitly via Forms API + additional scopes and update the manual/UX accordingly.
+
+---
+
+### Authentication & session model (important)
+
+The backend obtains Google OAuth tokens on callback and then:
+
+- **Preferred (recommended for serverless)**: persists tokens in an **encrypted HttpOnly cookie** when
+  **`GF_SESSION_PASSWORD`** is set.
+- **Fallback**: in-memory token slot (cold start / instance swap ⇒ may require re-login).
+
+This repo is intentionally not a multi-tenant auth server. If you need multiple independent admins,
+you should redesign token storage and request scoping.
+
+---
+
+## Local development
+
+### Prerequisites
+
+- Node.js **20**
+
+### Install
 
 ```bash
-git clone <repo-url>
-cd gform-gen
-
 npm install
 cd backend && npm install && cd ..
-
-# backend/.env
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-
-# start servers
-cd backend && npm run dev
-cd .. && npm run dev
 ```
 
----
+### Frontend env
 
-## local / prod 切替（Vercelで localhost に戻らないようにする）
+The frontend chooses the API/auth base via `src/lib/apiBase.ts`.
 
-このフロントは **`VITE_RUNTIME`** で local / prod を切替します。API/認証のURLは `src/lib/apiBase.ts` に集約済みです。
-
-### フロント（Vite）の環境変数
-
-- **local**
+- **Local**
   - `VITE_RUNTIME=local`
   - `VITE_LOCAL_API_BASE=http://localhost:3000`
-- **prod**
-  - `VITE_RUNTIME=prod`
-  - `VITE_PROD_API_BASE=/api`（Vercel同居に見せる）または `https://<backend-host>`（backend別ホスト）
 
-`.env.*` をコミットできないため、以下のサンプルを用意しています（ローカルではコピーして利用）。
-
-- `config/env.local.example` → `.env.local`
-- `config/env.production.example` → `.env.production`
-
-例:
+Copy the sample:
 
 ```bash
 cp config/env.local.example .env.local
 ```
 
-### バックエンド（Express）の環境変数（重要）
+### Backend env (local)
 
-- **`OAUTH_REDIRECT_URI`**（任意）: redirect URI を固定したい場合のみ指定
-- **`FRONTEND_ORIGIN`**（任意）: OAuth完了後に戻すフロント origin を固定したい場合に指定
-- **`CORS_ORIGIN`**（任意）: 許可する origin（`,`区切り可、`*` も可）
+The backend reads `backend/.env.local` **only in local dev**.
 
-### A. backend別ホスト運用（推奨・簡単）
+Create `backend/.env.local`:
 
-1) backend をどこかにデプロイ（例: Render/Fly/Cloud Run 等）
-2) Vercel（Production）の env を以下に設定:
+```bash
+GF_GOOGLE_CLIENT_ID=...
+GF_GOOGLE_CLIENT_SECRET=...
+GF_FRONTEND_ORIGIN=http://localhost:5173
+GF_CORS_ORIGIN=http://localhost:5173
+GF_SESSION_PASSWORD=please_set_a_long_random_string_here_32chars_min
+```
 
-- `VITE_RUNTIME=prod`
-- `VITE_PROD_API_BASE=https://<backend-host>`（または `https://<backend-host>/api`）
+> Tip: we use **GF_*** keys to avoid collisions with firebase-tools auto-loading `backend/.env`.
 
-3) Google Cloud Console（OAuthクライアント）に redirect URI を追加:
+### Run
 
-- backendが `/api/auth/google/callback` を使う場合: `https://<backend-host>/api/auth/google/callback`
-- backendが `/auth/google/callback` を使う場合: `https://<backend-host>/auth/google/callback`
+```bash
+# backend
+cd backend && npm run dev
 
-※この構成だと Vercel 側の rewrite は不要です。
-
-### B. Vercel同居 `/api` 運用（同一ドメインに見せたい）
-
-フロントは `VITE_PROD_API_BASE=/api` を向くので、**Vercel側で `/api/*` を backend にプロキシ**する必要があります。
-
-#### Vercel Dashboard で Rewrite を追加（推奨）
-
-Vercel → Project → Settings → Rewrites に以下を追加:
-
-- Source: `/api/(.*)`
-- Destination: `https://<backend-host>/api/$1`
-
-また、過去のデプロイ/キャッシュ等でフロントが誤って `/auth/*` に飛ぶ場合があるので、保険として以下も追加推奨です:
-
-- Source: `/auth/(.*)`
-- Destination: `/api/auth/$1`
-
-（`vercel.json.example` にも同内容のテンプレを置いてあります。ホスト固定できるなら `vercel.json` として利用可能。）
-
-#### OAuth（この構成の重要ポイント）
-
-Google Cloud Console の redirect URI は **Vercel側のURL** を登録:
-
-- `https://<vercel-domain>/api/auth/google/callback`
-
-必要なら backend 側で明示的に:
-
-- `OAUTH_REDIRECT_URI=https://<vercel-domain>/api/auth/google/callback`
-- `FRONTEND_ORIGIN=https://<vercel-domain>`
-
-を設定すると確実です。
-
-### トラブルシュート（Cannot GET）
-
-Vercel上で以下を直接開いて確認できます:
-
-- `https://<vercel-domain>/api/auth/google`
-  - 期待: Googleへの 302
-  - Cannot GET: Vercelの rewrite が無い/間違い
-
-## Notes
-
-* OAuth tokens are kept **in memory**
-
-  * Backend restart ⇒ re-login required
-* Production usage requires:
-
-  * A production OAuth client
-  * Proper redirect URI configuration
-  * A running backend (frontend is hosted on Vercel)
+# frontend (in another terminal)
+cd .. && npm run dev
+```
 
 ---
 
-## Firebase Hosting + Functions で運用する場合（/api同居）
+## Production deployment (Firebase Hosting + Functions)
 
-このリポジトリは Firebase 用の最低限の設定も入っています（`firebase.json`）。構成は:
+This repo includes `firebase.json` for a co-located deployment:
 
-- Hosting: Vite の `dist/` を配信
-- Functions: `backend/index.js` の Express を `api` 関数として公開
-- Rewrites: `/api/**` と `/auth/**` を Functions に転送
+- Hosting serves `dist/`
+- Functions exposes Express as the `api` function
+- Rewrites route `/api/**` and `/auth/**` to the function
 
-### デプロイ手順（概要）
-
-1) フロントをビルド
+### 1) Build
 
 ```bash
 npm run build
 ```
 
-2) backend 側の env を Firebase Functions の **Secrets** に設定（推奨・簡単）
+### 2) Configure secrets
 
-この backend は `process.env` も見ますが、Firebase 本番は Secrets を使うのが確実です。
-
-重要: `backend/.env` に `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` が入っていると、
-firebase-tools がそれらを **non-secret 環境変数**として読み込み、Secrets と衝突して
-以下のエラーでデプロイが落ちます:
-
-- `Secret environment variable overlaps non secret environment variable: GOOGLE_CLIENT_ID`
-
-対処:
-
-- `backend/.env` から上記キーを削除する、または `backend/.env` を **`backend/.env.local` にリネーム**してください
-  - ローカル開発は `.env.local` を読むようにしています
+Use Firebase Functions Secrets (recommended):
 
 ```bash
-# 先にプロジェクトを指定（このリポジトリの default が違う場合があるので明示推奨）
-firebase use gfca-aizu
+firebase use <your-project-id>
 
-# NOTE: backend/.env が firebase-tools により自動ロードされても衝突しないよう、Secrets は GF_* 名を使います
 firebase functions:secrets:set GF_GOOGLE_CLIENT_ID
 firebase functions:secrets:set GF_GOOGLE_CLIENT_SECRET
 firebase functions:secrets:set GF_FRONTEND_ORIGIN
 firebase functions:secrets:set GF_OAUTH_REDIRECT_URI
 
-# 任意: CORS を絞りたい場合（既定は "*"）
+# Optional: lock down CORS (default is "*")
 firebase functions:secrets:set GF_CORS_ORIGIN
 
-# 必須: ユーザーごとのログイン状態を分離するためのセッション暗号鍵（32文字以上）
+# Recommended: enables encrypted cookie session across serverless instances
 firebase functions:secrets:set GF_SESSION_PASSWORD
 ```
 
-設定値の例:
+Example values:
 
 - `GF_FRONTEND_ORIGIN=https://<your-hosting-domain>`
 - `GF_OAUTH_REDIRECT_URI=https://<your-hosting-domain>/api/auth/google/callback`
 - `GF_CORS_ORIGIN=https://<your-hosting-domain>`
 - `GF_SESSION_PASSWORD=<32+ chars random>`
 
-3) Firebase deploy
+### 3) Deploy
 
 ```bash
 firebase deploy
 ```
 
-開発で「毎回 build → deploy が面倒」な場合は、まとめコマンドも用意しています:
+Or:
 
 ```bash
 npm run deploy:firebase
 ```
 
-### OAuth Redirect URI（Google Cloud Console）
+### OAuth redirect URI (Google Cloud Console)
 
-Authorized redirect URIs にこれを追加:
+Add this to **Authorized redirect URIs**:
 
 - `https://<your-hosting-domain>/api/auth/google/callback`
 
 ---
 
-## Philosophy
+## Caching notes (why you might see “old UI”)
 
-Treat Google Drive as the database.
-Everything else is just a view.
+SPAs can look “stuck” if `index.html` is cached while assets change.
+This repo configures Firebase Hosting headers so that:
+
+- `index.html` is **not cached** (always revalidated)
+- hashed `/assets/**` are cached long-term (immutable)
+
+See `firebase.json`.
+
+---
+
+## Security notes
+
+- Never commit secrets. `.env` and `.env.*` are ignored at repo root, and `backend/.env` is ignored.
+- Prefer **Firebase Secrets** over `.env` files in production.
+- OAuth tokens are stored **encrypted** in an HttpOnly cookie when `GF_SESSION_PASSWORD` is set.
+
+---
+
+## Repo layout
+
+- `src/`: frontend
+- `backend/`: Express backend (Firebase Function)
+- `config/`: example env files for Vite

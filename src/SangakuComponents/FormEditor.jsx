@@ -19,7 +19,6 @@ export default function FormEditor({
     deadline: dayjs("2025-12-23 17:00"),
     place: "会津若松ワシントンホテル",
     host: "会津産学懇話会",
-    content: "",
     participantNameCount: 1,
   });
 
@@ -63,7 +62,6 @@ export default function FormEditor({
         credentials: "include",
         body: JSON.stringify({
           title: formData.title,
-          content: formData.content,
           datetime: formData.datetime ? formData.datetime.toISOString() : null,
           deadline: formData.deadline ? formData.deadline.toISOString() : null,
           place: formData.place,
@@ -110,7 +108,7 @@ export default function FormEditor({
             fullWidth
           />
 
-          <Box sx={{ display: "flex", gap: 2 }}>
+          <Box sx={{ display: "flex", gap: 2, flexDirection: { xs: "column", sm: "row" } }}>
             <DateTimeInput
               value={formData.datetime}
               onChange={handleDateTimeChange}
@@ -151,16 +149,6 @@ export default function FormEditor({
               </MenuItem>
             ))}
           </TextField>
-
-          <TextField
-            label="本文"
-            name="content"
-            value={formData.content}
-            onChange={handleChange}
-            multiline
-            minRows={4}
-            fullWidth
-          />
 
           {error && (
             <p style={{ color: "red", textAlign: "center" }}>{error}</p>

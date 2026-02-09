@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, BarChart3, Settings, LogIn, LogOut, Lock, BookOpen } from "lucide-react";
+import { FileText, BarChart3, Settings, LogOut, Lock, BookOpen } from "lucide-react";
 import "../App.css";
 import FormEditor from "./FormEditor";
 import StatsViewer from "./StatsViewer";
@@ -32,19 +32,6 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
         <div className="sangaku-brand" aria-label="アプリ名">
           <span className="sangaku-brand-text">FCT</span>
         </div>
-
-        <button
-          type="button"
-          className="sangaku-nav-item"
-          onClick={() => (isLoggedIn ? onLogout?.() : onLogin?.())}
-          title={isLoggedIn ? "ログアウト" : "ログイン"}
-          aria-label={isLoggedIn ? "ログアウト" : "ログイン"}
-        >
-          {isLoggedIn ? <LogOut size={22} /> : <LogIn size={22} />}
-          <span className="sangaku-nav-label">
-            {isLoggedIn ? "ログアウト" : "ログイン"}
-          </span>
-        </button>
 
         <nav className="sangaku-nav" aria-label="ページ切替">
           <div className="sangaku-nav-group" aria-label="メインメニュー">
@@ -90,14 +77,26 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
         </nav>
 
         <div className="sangaku-sidebar-bottom" aria-label="情報・設定">
+          {isLoggedIn && (
+            <button
+              type="button"
+              className="sangaku-nav-item sangaku-nav-item--subtle sangaku-nav-item--icononly sangaku-nav-item--danger"
+              onClick={() => onLogout?.()}
+              aria-label="ログアウト"
+              data-tooltip="ログアウト"
+            >
+              <LogOut size={22} />
+              <span className="sangaku-nav-label">ログアウト</span>
+            </button>
+          )}
           <button
             type="button"
             className={`sangaku-nav-item sangaku-nav-item--subtle sangaku-nav-item--icononly ${
               activeTab === "manual" ? "active" : ""
             }`}
             onClick={() => setActiveTab("manual")}
-            title="説明書"
             aria-label="説明書"
+            data-tooltip="説明書"
           >
             <BookOpen size={22} />
             <span className="sangaku-nav-label">説明書</span>
@@ -108,8 +107,8 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
               activeTab === "settings" ? "active" : ""
             }`}
             onClick={() => setActiveTab("settings")}
-            title="設定"
             aria-label="設定"
+            data-tooltip="設定"
           >
             <Settings size={22} />
             <span className="sangaku-nav-label">設定</span>

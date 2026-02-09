@@ -4,6 +4,7 @@ import cors from "cors";
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { google } from "googleapis";
+import crypto from "node:crypto";
 import { logEvent, requestLogger, readRecentLogLines } from "./logger.js";
 
 const IS_FIREBASE =
@@ -24,6 +25,8 @@ const GOOGLE_CLIENT_SECRET_SECRET = defineSecret("GF_GOOGLE_CLIENT_SECRET");
 const CORS_ORIGIN_SECRET = defineSecret("GF_CORS_ORIGIN");
 const FRONTEND_ORIGIN_SECRET = defineSecret("GF_FRONTEND_ORIGIN");
 const OAUTH_REDIRECT_URI_SECRET = defineSecret("GF_OAUTH_REDIRECT_URI");
+// Keep the name aligned with README/ops docs.
+const SESSION_PASSWORD_SECRET = defineSecret("GF_SESSION_PASSWORD");
 
 function readSecret(name, secretParam) {
   try {
@@ -46,11 +49,14 @@ function readLegacyAwareSecret(gfKey, legacyKey, secretParam) {
 }
 
 // NOTE: single-user mode
-// This backend intentionally keeps OAuth tokens in memory (one global slot).
-// Backend restart / cold start => re-login required.
+// Prefer cookie-based persistence so serverless instances don't lose login state.
+// Fallback: in-memory (backend restart / cold start => re-login required).
 let savedTokens = null;
+let warnedMissingSessionPassword = false;
 
 const app = express();
+// Ensure req.protocol respects x-forwarded-proto (Firebase/Vercel/Cloud Run)
+app.set("trust proxy", 1);
 const CORS_ORIGIN =
   readLegacyAwareSecret("GF_CORS_ORIGIN", "CORS_ORIGIN", CORS_ORIGIN_SECRET) || "*";
 const allowedOrigins =
@@ -134,16 +140,162 @@ function makeAuthedOAuthClientOrNull(_req) {
   return client;
 }
 
-function getTokens(_req) {
+function parseCookies(req) {
+  const raw = String(req?.headers?.cookie || "");
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const part of raw.split(";")) {
+    const p = part.trim();
+    if (!p) continue;
+    const i = p.indexOf("=");
+    if (i <= 0) continue;
+    const k = p.slice(0, i).trim();
+    const v = p.slice(i + 1).trim();
+    if (!k) continue;
+    out[k] = decodeURIComponent(v);
+  }
+  return out;
+}
+
+function base64UrlEncode(buf) {
+  return Buffer.from(buf)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function base64UrlDecode(s) {
+  const b64 = String(s).replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+  return Buffer.from(b64 + pad, "base64");
+}
+
+function getSessionSecret() {
+  const v = readLegacyAwareSecret(
+    "GF_SESSION_PASSWORD",
+    "SESSION_PASSWORD",
+    SESSION_PASSWORD_SECRET
+  );
+  return String(v || "").trim() || "";
+}
+
+function encryptTokens(tokens, secret) {
+  const key = crypto.createHash("sha256").update(secret).digest(); // 32 bytes
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const plaintext = Buffer.from(JSON.stringify(tokens), "utf8");
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  // v1.<iv>.<tag>.<ciphertext>
+  return `v1.${base64UrlEncode(iv)}.${base64UrlEncode(tag)}.${base64UrlEncode(ciphertext)}`;
+}
+
+function decryptTokens(payload, secret) {
+  const p = String(payload || "");
+  if (!p.startsWith("v1.")) return null;
+  const parts = p.split(".");
+  if (parts.length !== 4) return null;
+  const [, ivB64u, tagB64u, ctB64u] = parts;
+  const key = crypto.createHash("sha256").update(secret).digest();
+  const iv = base64UrlDecode(ivB64u);
+  const tag = base64UrlDecode(tagB64u);
+  const ciphertext = base64UrlDecode(ctB64u);
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+  const obj = JSON.parse(plaintext.toString("utf8"));
+  return obj && typeof obj === "object" ? obj : null;
+}
+
+function setAuthCookie(req, res, tokens) {
+  const secret = getSessionSecret();
+  if (!secret) {
+    if (IS_FIREBASE && !warnedMissingSessionPassword) {
+      warnedMissingSessionPassword = true;
+      console.warn(
+        "[gformgen] GF_SESSION_PASSWORD is not set. Login state may be lost between serverless instances."
+      );
+    }
+    return false;
+  }
+
+  const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
+    .split(",")[0]
+    .trim();
+  const secure = proto === "https";
+  const value = encryptTokens(tokens, secret);
+  const attrs = [
+    `gformgen_tokens=${encodeURIComponent(value)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    secure ? "Secure" : "",
+    // keep for ~30 days (refresh_token is long-lived; access_token is short)
+    `Max-Age=${60 * 60 * 24 * 30}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
+  res.setHeader("Set-Cookie", attrs);
+  return true;
+}
+
+function clearAuthCookie(req, res) {
+  const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
+    .split(",")[0]
+    .trim();
+  const secure = proto === "https";
+  const attrs = [
+    "gformgen_tokens=",
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    secure ? "Secure" : "",
+    "Max-Age=0",
+  ]
+    .filter(Boolean)
+    .join("; ");
+  res.setHeader("Set-Cookie", attrs);
+}
+
+function getTokens(req) {
+  // Prefer cookie (works across serverless instances), fallback to in-memory.
+  const secret = getSessionSecret();
+  if (secret) {
+    try {
+      const cookies = parseCookies(req);
+      const enc = cookies?.gformgen_tokens;
+      if (enc) {
+        const tokens = decryptTokens(enc, secret);
+        if (tokens?.access_token || tokens?.refresh_token) {
+          savedTokens = tokens; // cache in-memory for this instance
+          return tokens;
+        }
+      }
+    } catch {
+      // ignore and fallback
+    }
+  }
   return savedTokens;
 }
 
-async function setTokens(_req, _res, tokens) {
+async function setTokens(req, res, tokens) {
   savedTokens = tokens;
+  // Best-effort cookie persistence (prevents "login works only after refresh" behind LB)
+  try {
+    setAuthCookie(req, res, tokens);
+  } catch {
+    // ignore
+  }
 }
 
-async function clearTokens(_req, _res) {
+async function clearTokens(req, res) {
   savedTokens = null;
+  try {
+    clearAuthCookie(req, res);
+  } catch {
+    // ignore
+  }
 }
 
 /* =========================
@@ -519,7 +671,6 @@ app.post("/api/forms/create", async (req, res) => {
 
     const {
       title,
-      content,
       datetime,
       deadline,
       place,
@@ -542,7 +693,6 @@ app.post("/api/forms/create", async (req, res) => {
       type: "forms_create_requested",
       // Avoid PII-heavy payloads; keep only high-level fields.
       formTitle,
-      hasContent: Boolean(content),
       hasDatetime: Boolean(datetime),
       hasDeadline: Boolean(deadline),
       participantNameCount: safeParticipantNameCount,

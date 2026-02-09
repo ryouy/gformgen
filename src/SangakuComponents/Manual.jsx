@@ -158,19 +158,79 @@ export default function ManualPage() {
               集計画面のボタンから、Excel用のCSVや印刷用PDFを出力できます。
             </p>
             <ul style={{ marginTop: 8 }}>
-              <li>
-                <b>CSV</b>：Excelで加工したいとき
-              </li>
-              <li>
-                <b>PDF</b>：紙で配布/持ち回りしたいとき
-              </li>
+              
             </ul>
           </>
         ),
       },
       {
         id: "s7",
-        title: "7. よくある質問",
+        title: "7. 締切・削除（管理）",
+        body: (
+          <>
+            <p style={{ marginTop: 0 }}>
+              集計画面の「管理」から、フォームの状態変更や削除ができます。
+            </p>
+            <ul style={{ marginTop: 8 }}>
+              <li>
+                <b>締切</b>：アプリ上で「締切済み扱い」にします（Googleフォーム自体の受付停止ではありません、追加実装予定）
+              </li>
+              <li>
+                <b>削除</b>：
+                <a
+                    href="https://drive.google.com/drive/u/0/trash"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                >
+                    Google Drive のゴミ箱
+                </a>
+                に移動します（一定期間はゴミ箱から復元できます）
+                </li>
+
+            </ul>
+            <div className="manual-note">
+              ※ 管理操作はログインした管理者のみ実行できます。
+            </div>
+          </>
+        ),
+      },
+      {
+        id: "s8",
+        title: "8. リンク / QRコードで配布する",
+        body: (
+          <>
+            <p style={{ marginTop: 0 }}>
+              フォームを作成したら、集計画面でフォームを選ぶと <b>リンク</b> と <b>QR</b> が使えます。
+            </p>
+            <ul style={{ marginTop: 8 }}>
+              <li>
+                <b>リンク</b>：回答用フォームを開きます（参加者へURLを共有）
+              </li>
+              <li>
+                <b>QR</b>：QRコードを表示します（会場で投影/印刷して配布）
+              </li>
+            </ul>
+          </>
+        ),
+      },
+      {
+        id: "s9",
+        title: "9. 備考（自由記述）をまとめて見る",
+        body: (
+          <>
+            <p style={{ marginTop: 0 }}>
+              回答に備考が含まれる場合、集計画面の操作に <b>備考</b> ボタンが表示されます。
+            </p>
+            <ul style={{ marginTop: 8 }}>
+              <li>備考だけを一覧で確認できます</li>
+              <li>コピーして共有・整理しやすい形で表示されます</li>
+            </ul>
+          </>
+        ),
+      },
+      {
+        id: "s10",
+        title: "10. よくある質問",
         body: (
           <>
             <ul style={{ marginTop: 8 }}>
@@ -182,6 +242,9 @@ export default function ManualPage() {
               </li>
               <li>
                 <b>集計が更新されない</b>：ページを再読み込みしてみてください。
+              </li>
+              <li>
+                <b>締切にしたのに回答が増える</b>：このアプリの「締切」はアプリ上の扱いです（Googleフォーム自体の受付停止ではありません）。
               </li>
             </ul>
           </>

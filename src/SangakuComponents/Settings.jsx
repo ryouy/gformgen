@@ -4,10 +4,10 @@ export default function SettingsPage() {
       <h2 style={{ marginTop: 0, color: "#0f172a" }}>設定</h2>
 
       <section style={{ lineHeight: 1.8, color: "#0f172a" }}>
-        <h3 style={{ margin: "18px 0 10px", color: "#0f172a" }}>開発者情報</h3>
+        
         <div>
           <span style={{ color: "#111827", fontWeight: 900, marginRight: 8 }}>開発</span>
-          松下 稜（会津大学 コンピュータ理工学部 CSS Lab）
+          松下 稜（会津大学 計算社会学研究室）
         </div>
         <div>
           <span style={{ color: "#111827", fontWeight: 900, marginRight: 8 }}>Email</span>
@@ -15,7 +15,6 @@ export default function SettingsPage() {
             href="mailto:s1300041@u-aizu.ac.jp"
             style={{
               color: "#1d4ed8",
-              textDecoration: "underline",
               textUnderlineOffset: 3,
             }}
           >

@@ -63,6 +63,17 @@ function summarizePeople(v, { empty = "" } = {}) {
   return `${parts[0]}（他${parts.length - 1}名）`;
 }
 
+function formatPeopleMultiline(v, { empty = "" } = {}) {
+  const s = String(v ?? "").trim();
+  if (!s) return empty;
+  const parts = s
+    .split(/[\/／]/g)
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return parts[0] || empty;
+  return parts.join("\n");
+}
+
 export default function StatsViewer({ initialFormId }) {
   const meetingTitle = "2025年10月 定例会（会津地区経営者協会）";
   const [forms, setForms] = useState([]);
@@ -361,8 +372,8 @@ export default function StatsViewer({ initialFormId }) {
       ...rows.map((r) =>
         [
           r?.company,
-          r?.role,
-          r?.name,
+          formatPeopleMultiline(r?.role, { empty: "" }),
+          formatPeopleMultiline(r?.name, { empty: "" }),
           r?.attendance,
           r?.count,
           r?.remarks,
@@ -412,8 +423,8 @@ export default function StatsViewer({ initialFormId }) {
     const body = attending.map((p, i) => [
       String(i + 1),
       p.company || "",
-      p.role || "ー",
-      p.name || "",
+      formatPeopleMultiline(p.role, { empty: "ー" }),
+      formatPeopleMultiline(p.name, { empty: "" }),
       String(Number(p?.count) || 1),
     ]);
 
@@ -430,6 +441,7 @@ export default function StatsViewer({ initialFormId }) {
         textColor: [30, 30, 30],
         lineColor: [220, 220, 220],
         lineWidth: 0.25,
+        overflow: "linebreak",
       },
       headStyles: {
         fillColor: [240, 242, 245],
@@ -439,8 +451,8 @@ export default function StatsViewer({ initialFormId }) {
       columnStyles: {
         0: { halign: "center", cellWidth: 10 },
         1: { halign: "center", cellWidth: 60 },
-        2: { halign: "center", cellWidth: 25 },
-        3: { halign: "center", cellWidth: 35 },
+        2: { halign: "left", cellWidth: 32 },
+        3: { halign: "left", cellWidth: 38 },
         4: { halign: "center", cellWidth: 15 },
       },
       theme: "grid",
@@ -548,128 +560,130 @@ export default function StatsViewer({ initialFormId }) {
       {/* 上部：既存フォーム選択 + 操作（リンク/QR/CSV/PDF/締切/削除） */}
       <div className="stats-toolbar">
         <div className="stats-toolbar-row stats-toolbar-row-top">
-          <div className="stats-toolbar-left">
-          <div className="mini-tabs" role="tablist" aria-label="フォーム一覧切替">
-            <button
-              type="button"
-              className={`mini-tab ${listMode === "open" ? "active" : ""}`}
-              onClick={() => {
-                setListMode("open");
-                if (
-                  selectedFormId &&
-                  forms.some((f) => f.formId === selectedFormId && f.acceptingResponses === false)
-                ) {
-                  setSelectedFormId("");
-                  setRows([]);
-                  setFormUrl("");
-                  setAcceptingResponses(null);
-                  window.localStorage.removeItem(SELECTED_FORM_ID_STORAGE_KEY);
-                }
-              }}
-            >
-              集計中
-            </button>
-            <button
-              type="button"
-              className={`mini-tab ${listMode === "closed" ? "active" : ""}`}
-              onClick={() => {
-                setListMode("closed");
-                if (
-                  selectedFormId &&
-                  forms.some((f) => f.formId === selectedFormId && f.acceptingResponses !== false)
-                ) {
-                  setSelectedFormId("");
-                  setRows([]);
-                  setFormUrl("");
-                  setAcceptingResponses(null);
-                  window.localStorage.removeItem(SELECTED_FORM_ID_STORAGE_KEY);
-                }
-              }}
-            >
-              締切済み
-            </button>
-          </div>
+          <div className="stats-toolbar-top-spacer" aria-hidden="true" />
 
-          <Autocomplete
-            value={selectedForm}
-            options={visibleForms}
-            getOptionLabel={(opt) => normalizeTitle(opt?.title)}
-            isOptionEqualToValue={(a, b) => a?.formId === b?.formId}
-            onChange={(_, next) => {
-              const id = next?.formId || "";
-              if (next) setListMode(next.acceptingResponses === false ? "closed" : "open");
-              setEmptyDelayDone(false);
-              setSelectedFormId(id);
-              setError(null);
-              setFormUrl("");
-              setAcceptingResponses(null);
-              if (!id) {
-                setRows([]);
-                window.localStorage.removeItem(SELECTED_FORM_ID_STORAGE_KEY);
-                return;
-              }
-              window.localStorage.setItem(SELECTED_FORM_ID_STORAGE_KEY, id);
-              void fetchSummary(id);
-              void fetchFormInfo(id);
-              void fetchRows(id);
-            }}
-            renderOption={(props, option) => {
-              const title = normalizeTitle(option?.title);
-              const ymd = formatDateYMD(option?.createdTime);
-              const s = summaries?.[option?.formId];
-              return (
-                <li {...props} key={option.formId} style={{ padding: "10px 12px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <div style={{ fontWeight: 700, color: "#0f172a" }}>
-                      {truncate(title, 18)}
-                    </div>
-                    <div style={{ fontSize: "0.82rem", fontWeight: 800, color: "#64748b" }}>
-                      {`出席:${s ? s.attendeeCount : "…"}人 / 回答:${
-                        s ? s.responseCount : "…"
-                      }件`}
-                      {ymd ? ` ・ ${ymd}` : ""}
-                    </div>
-                  </div>
-                </li>
-              );
-            }}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                placeholder="既存フォームを選択"
-                size="small"
-                sx={{
-                  width: { xs: "92vw", sm: 420 },
-                  minWidth: { xs: 220, sm: 320 },
-                  "& .MuiOutlinedInput-root": {
-                    borderRadius: "14px",
-                    background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
-                    boxShadow: "0 2px 10px rgba(15,23,42,0.06)",
-                    fontWeight: 700,
-                  },
-                  "& .MuiOutlinedInput-notchedOutline": {
-                    borderColor: "rgba(148, 163, 184, 0.6)",
-                  },
-                  "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-                    borderColor: "rgba(59,130,246,0.55)",
-                  },
-                  "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                    borderColor: "rgba(59,130,246,0.8)",
-                  },
+          <div className="stats-toolbar-center" aria-label="フォーム選択">
+            <div className="mini-tabs" role="tablist" aria-label="フォーム一覧切替">
+              <button
+                type="button"
+                className={`mini-tab ${listMode === "open" ? "active" : ""}`}
+                onClick={() => {
+                  setListMode("open");
+                  if (
+                    selectedFormId &&
+                    forms.some((f) => f.formId === selectedFormId && f.acceptingResponses === false)
+                  ) {
+                    setSelectedFormId("");
+                    setRows([]);
+                    setFormUrl("");
+                    setAcceptingResponses(null);
+                    window.localStorage.removeItem(SELECTED_FORM_ID_STORAGE_KEY);
+                  }
                 }}
-              />
-            )}
-            slotProps={{
-              paper: {
-                sx: {
-                  borderRadius: "16px",
-                  border: "1px solid rgba(148,163,184,0.35)",
-                  boxShadow: "0 18px 44px rgba(15,23,42,0.18)",
-                  overflow: "hidden",
+              >
+                集計中
+              </button>
+              <button
+                type="button"
+                className={`mini-tab ${listMode === "closed" ? "active" : ""}`}
+                onClick={() => {
+                  setListMode("closed");
+                  if (
+                    selectedFormId &&
+                    forms.some((f) => f.formId === selectedFormId && f.acceptingResponses !== false)
+                  ) {
+                    setSelectedFormId("");
+                    setRows([]);
+                    setFormUrl("");
+                    setAcceptingResponses(null);
+                    window.localStorage.removeItem(SELECTED_FORM_ID_STORAGE_KEY);
+                  }
+                }}
+              >
+                締切済み
+              </button>
+            </div>
+
+            <Autocomplete
+              value={selectedForm}
+              options={visibleForms}
+              getOptionLabel={(opt) => normalizeTitle(opt?.title)}
+              isOptionEqualToValue={(a, b) => a?.formId === b?.formId}
+              onChange={(_, next) => {
+                const id = next?.formId || "";
+                if (next) setListMode(next.acceptingResponses === false ? "closed" : "open");
+                setEmptyDelayDone(false);
+                setSelectedFormId(id);
+                setError(null);
+                setFormUrl("");
+                setAcceptingResponses(null);
+                if (!id) {
+                  setRows([]);
+                  window.localStorage.removeItem(SELECTED_FORM_ID_STORAGE_KEY);
+                  return;
+                }
+                window.localStorage.setItem(SELECTED_FORM_ID_STORAGE_KEY, id);
+                void fetchSummary(id);
+                void fetchFormInfo(id);
+                void fetchRows(id);
+              }}
+              renderOption={(props, option) => {
+                const title = normalizeTitle(option?.title);
+                const ymd = formatDateYMD(option?.createdTime);
+                const s = summaries?.[option?.formId];
+                return (
+                  <li {...props} key={option.formId} style={{ padding: "10px 12px" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ fontWeight: 700, color: "#0f172a" }}>
+                        {truncate(title, 18)}
+                      </div>
+                      <div style={{ fontSize: "0.82rem", fontWeight: 800, color: "#64748b" }}>
+                        {`出席:${s ? s.attendeeCount : "…"}人 / 回答:${
+                          s ? s.responseCount : "…"
+                        }件`}
+                        {ymd ? ` ・ ${ymd}` : ""}
+                      </div>
+                    </div>
+                  </li>
+                );
+              }}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  placeholder="既存フォームを選択"
+                  size="small"
+                  sx={{
+                    width: { xs: "92vw", sm: 420 },
+                    minWidth: { xs: 220, sm: 320 },
+                    "& .MuiOutlinedInput-root": {
+                      borderRadius: "14px",
+                      background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+                      boxShadow: "0 2px 10px rgba(15,23,42,0.06)",
+                      fontWeight: 700,
+                    },
+                    "& .MuiOutlinedInput-notchedOutline": {
+                      borderColor: "rgba(148, 163, 184, 0.6)",
+                    },
+                    "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
+                      borderColor: "rgba(59,130,246,0.55)",
+                    },
+                    "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
+                      borderColor: "rgba(59,130,246,0.8)",
+                    },
+                  }}
+                />
+              )}
+              slotProps={{
+                paper: {
+                  sx: {
+                    borderRadius: "16px",
+                    border: "1px solid rgba(148,163,184,0.35)",
+                    boxShadow: "0 18px 44px rgba(15,23,42,0.18)",
+                    overflow: "hidden",
+                  },
                 },
-              },
-            }}
-          />
+              }}
+            />
           </div>
 
         {selectedFormId ? (
@@ -769,7 +783,9 @@ export default function StatsViewer({ initialFormId }) {
               </span>
             </span>
           </div>
-        ) : null}
+        ) : (
+          <div className="stats-toolbar-top-spacer" aria-hidden="true" />
+        )}
         </div>
 
         {selectedFormId ? (
@@ -840,11 +856,7 @@ export default function StatsViewer({ initialFormId }) {
         </p>
       )}
 
-      {!selectedFormId ? (
-        <p style={{ textAlign: "center", marginTop: "1rem" }}>
-          既存フォームを選択してください
-        </p>
-      ) : loading && rows.length === 0 ? (
+      {!selectedFormId ? null : loading && rows.length === 0 ? (
         <p style={{ textAlign: "center", marginTop: "1rem" }}>読み込み中…</p>
       ) : rows.length === 0 && !emptyDelayDone && !error ? (
         <p style={{ textAlign: "center", marginTop: "1rem" }}>読み込み中…</p>
