@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:firebase": "npm run build && firebase deploy --only functions,hosting",
+    "deploy:firebase:hosting": "npm run build && firebase deploy --only hosting",
+    "deploy:firebase:functions": "firebase deploy --only functions"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

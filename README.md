@@ -232,6 +232,12 @@ firebase functions:secrets:set GF_CORS_ORIGIN
 firebase deploy
 ```
 
+開発で「毎回 build → deploy が面倒」な場合は、まとめコマンドも用意しています:
+
+```bash
+npm run deploy:firebase
+```
+
 ### OAuth Redirect URI（Google Cloud Console）
 
 Authorized redirect URIs にこれを追加:
