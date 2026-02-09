@@ -73,7 +73,110 @@ body {
 .sangaku-nav {
   display: flex;
   flex-direction: column;
+  gap: 12px; /* グループ間 */
+}
+
+.sangaku-nav-group {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+}
+
+.sangaku-sidebar-bottom {
+  margin-top: auto; /* ← ここで確実に下に寄せる（ログイン直後のズレ対策） */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sangaku-nav-item--icononly .sangaku-nav-label {
+  display: none; /* 説明書/設定はアイコンだけ */
+}
+
+.sangaku-nav-item--subtle {
+  /* 目立ちすぎない下段用 */
+  height: 46px;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: none;
+  border-color: rgba(15, 23, 42, 0.1);
+  opacity: 0.72;
+  transition: opacity 0.15s ease, transform 0.15s ease, border-color 0.15s ease,
+    background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sangaku-nav-item--subtle:hover {
+  opacity: 1;
+  transform: none; /* 下段は浮かせない */
+  background: rgba(248, 250, 252, 0.96);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+.sangaku-nav-item--subtle.active {
+  /* 下段はグラデを使わず、控えめにアクティブ表示 */
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.28);
+  color: rgba(15, 23, 42, 0.95);
+  box-shadow: none;
+}
+
+/* -------------------------------
+📘 説明書：章カード（上2列）→ 下に説明
+--------------------------------*/
+.manual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 10px 0 14px;
+}
+
+.manual-card {
+  text-align: left;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(248, 250, 252, 0.98);
+  border-radius: 18px;
+  padding: 14px 14px 12px;
+  font-weight: 950;
+  color: rgba(15, 23, 42, 0.92);
+  cursor: pointer;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.manual-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 18px 40px rgba(37, 99, 235, 0.1);
+}
+
+.manual-card.is-active {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.14), rgba(59, 130, 246, 0.12));
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 20px 46px rgba(37, 99, 235, 0.12);
+}
+
+.manual-card-title {
+  font-weight: 1000;
+  line-height: 1.25;
+}
+
+.manual-card-hint {
+  margin-top: 8px;
+  font-size: 0.86rem;
+  font-weight: 850;
+  color: rgba(51, 65, 85, 0.75);
+}
+
+.manual-bubble--below {
+  margin-top: 10px;
+}
+
+@media (max-width: 860px) {
+  .manual-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .sangaku-nav-item {
@@ -490,15 +593,23 @@ body {
 
 .manual-shell {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  /* 左ペインを少し可変にして、章一覧を2列にしても読みやすくする */
+  grid-template-columns: minmax(280px, 380px) 1fr;
   gap: 14px;
   align-items: start;
 }
 
 .manual-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  /*
+    章が多いと縦に長くなりすぎるので、デスクトップは2列で省スペースに。
+    ※モバイル（max-width: 860px）では既存の横並びUIを優先して下の@mediaで上書き。
+  */
+  column-count: 2;
+  column-gap: 10px;
+  /* 画面が低いときの保険（章が多い場合はここだけスクロール） */
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+  padding-right: 6px;
 }
 
 .manual-item {
@@ -510,6 +621,11 @@ body {
   font-weight: 950;
   color: rgba(15, 23, 42, 0.9);
   cursor: pointer;
+  /* multi-column 用（1項目が途中で折れない & 1列幅いっぱい） */
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 8px;
+  break-inside: avoid;
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease,
     background 0.15s ease;
 }
@@ -577,11 +693,20 @@ body {
     grid-template-columns: 1fr;
   }
   .manual-list {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+    column-count: 1;
+    column-gap: 0;
+    display: flex;
     flex-direction: row;
     flex-wrap: wrap;
+    gap: 8px;
   }
   .manual-item {
     width: fit-content;
+    display: inline-flex;
+    margin: 0;
   }
   .manual-bubble::before {
     display: none;

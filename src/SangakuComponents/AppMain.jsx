@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, BarChart3, Settings, LogIn, LogOut, Lock } from "lucide-react";
+import { FileText, BarChart3, Settings, LogIn, LogOut, Lock, BookOpen } from "lucide-react";
 import "../App.css";
 import FormEditor from "./FormEditor";
 import StatsViewer from "./StatsViewer";
 import SettingsPage from "./Settings";
+import ManualPage from "./Manual";
 import AuthGate from "./AuthGate";
 
 export default function App({ isLoggedIn, onLogin, onLogout }) {
@@ -46,47 +47,66 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
         </button>
 
         <nav className="sangaku-nav" aria-label="ページ切替">
+          <div className="sangaku-nav-group" aria-label="メインメニュー">
+            <button
+              type="button"
+              className={`sangaku-nav-item ${activeTab === "stats" ? "active" : ""} ${
+                isLocked ? "is-locked" : ""
+              }`}
+              onClick={() => (isLoggedIn ? setActiveTab("stats") : requestAuth("stats"))}
+              title={isLocked ? "集計（ログインが必要）" : "集計結果"}
+              aria-label="集計結果"
+              aria-disabled={isLocked}
+              data-tooltip={isLocked ? "ログインが必要です" : undefined}
+            >
+              {isLocked && (
+                <span className="sangaku-lock-badge" aria-hidden="true">
+                  <Lock size={14} />
+                </span>
+              )}
+              <BarChart3 size={22} />
+              <span className="sangaku-nav-label">集計</span>
+            </button>
+            <button
+              type="button"
+              className={`sangaku-nav-item ${activeTab === "form" ? "active" : ""} ${
+                isLocked ? "is-locked" : ""
+              }`}
+              onClick={() => (isLoggedIn ? setActiveTab("form") : requestAuth("form"))}
+              title={isLocked ? "作成（ログインが必要）" : "フォーム作成"}
+              aria-label="フォーム作成"
+              aria-disabled={isLocked}
+              data-tooltip={isLocked ? "ログインが必要です" : undefined}
+            >
+              {isLocked && (
+                <span className="sangaku-lock-badge" aria-hidden="true">
+                  <Lock size={14} />
+                </span>
+              )}
+              <FileText size={22} />
+              <span className="sangaku-nav-label">作成</span>
+            </button>
+          </div>
+        </nav>
+
+        <div className="sangaku-sidebar-bottom" aria-label="情報・設定">
           <button
             type="button"
-            className={`sangaku-nav-item ${activeTab === "stats" ? "active" : ""} ${
-              isLocked ? "is-locked" : ""
+            className={`sangaku-nav-item sangaku-nav-item--subtle sangaku-nav-item--icononly ${
+              activeTab === "manual" ? "active" : ""
             }`}
-            onClick={() => (isLoggedIn ? setActiveTab("stats") : requestAuth("stats"))}
-            title={isLocked ? "集計（ログインが必要）" : "集計結果"}
-            aria-label="集計結果"
-            aria-disabled={isLocked}
-            data-tooltip={isLocked ? "ログインが必要です" : undefined}
+            onClick={() => setActiveTab("manual")}
+            title="説明書"
+            aria-label="説明書"
           >
-            {isLocked && (
-              <span className="sangaku-lock-badge" aria-hidden="true">
-                <Lock size={14} />
-              </span>
-            )}
-            <BarChart3 size={22} />
-            <span className="sangaku-nav-label">集計</span>
+            <BookOpen size={22} />
+            <span className="sangaku-nav-label">説明書</span>
           </button>
           <button
             type="button"
-            className={`sangaku-nav-item ${activeTab === "form" ? "active" : ""} ${
-              isLocked ? "is-locked" : ""
+            className={`sangaku-nav-item sangaku-nav-item--subtle sangaku-nav-item--icononly ${
+              activeTab === "settings" ? "active" : ""
             }`}
-            onClick={() => (isLoggedIn ? setActiveTab("form") : requestAuth("form"))}
-            title={isLocked ? "作成（ログインが必要）" : "フォーム作成"}
-            aria-label="フォーム作成"
-            aria-disabled={isLocked}
-            data-tooltip={isLocked ? "ログインが必要です" : undefined}
-          >
-            {isLocked && (
-              <span className="sangaku-lock-badge" aria-hidden="true">
-                <Lock size={14} />
-              </span>
-            )}
-            <FileText size={22} />
-            <span className="sangaku-nav-label">作成</span>
-          </button>
-          <button
-            type="button"
-            className={`sangaku-nav-item ${activeTab === "settings" ? "active" : ""}`}
             onClick={() => setActiveTab("settings")}
             title="設定"
             aria-label="設定"
@@ -94,7 +114,7 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
             <Settings size={22} />
             <span className="sangaku-nav-label">設定</span>
           </button>
-        </nav>
+        </div>
       </aside>
 
       <div className="sangaku-main">
@@ -116,6 +136,10 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
           ) : activeTab === "settings" ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <SettingsPage />
+            </motion.div>
+          ) : activeTab === "manual" ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <ManualPage />
             </motion.div>
           ) : (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
