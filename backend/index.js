@@ -200,15 +200,53 @@ async function handleAuthCallback(req, res) {
     const state = String(req.query.state || "").trim();
     const returnTo = state ? decodeURIComponent(state) : null;
     const safeReturnTo = returnTo && /^https?:\/\//.test(returnTo) ? returnTo : null;
-    const frontendOrigin =
-      readLegacyAwareSecret(
-        "GF_FRONTEND_ORIGIN",
-        "FRONTEND_ORIGIN",
-        FRONTEND_ORIGIN_SECRET
-      ) ||
-      safeReturnTo ||
-      "/";
-    res.redirect(`${String(frontendOrigin).replace(/\/+$/, "")}/?login=success`);
+    const configuredFrontendOrigin = readLegacyAwareSecret(
+      "GF_FRONTEND_ORIGIN",
+      "FRONTEND_ORIGIN",
+      FRONTEND_ORIGIN_SECRET
+    );
+
+    const parseAbsoluteUrl = (maybeUrl) => {
+      if (!maybeUrl) return null;
+      try {
+        return new URL(String(maybeUrl));
+      } catch {
+        return null;
+      }
+    };
+
+    // Treat GF_FRONTEND_ORIGIN as "frontend base URL" (can include a path like "/gformgen/").
+    const configuredUrl = parseAbsoluteUrl(configuredFrontendOrigin);
+    const returnToUrl = parseAbsoluteUrl(safeReturnTo);
+
+    // Prefer returnTo when it is same-origin with configured frontend (or when no configured frontend).
+    // This supports hosting the SPA under a sub-path.
+    let redirectUrl = null;
+    if (returnToUrl && configuredUrl) {
+      if (returnToUrl.origin === configuredUrl.origin) redirectUrl = returnToUrl;
+      else redirectUrl = configuredUrl;
+    } else if (returnToUrl) {
+      redirectUrl = returnToUrl;
+    } else if (configuredUrl) {
+      redirectUrl = configuredUrl;
+    }
+
+    // Final fallback: redirect to the current request host (better than "/")
+    if (!redirectUrl) {
+      const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "https")
+        .split(",")[0]
+        .trim();
+      const host = String(req?.headers?.["x-forwarded-host"] || req?.get?.("host") || "").trim();
+      redirectUrl = host ? new URL(`${proto}://${host}`) : new URL("https://example.invalid");
+    }
+
+    // Strip query/hash and append login=success.
+    redirectUrl.search = "";
+    redirectUrl.hash = "";
+
+    const basePath = String(redirectUrl.pathname || "/").replace(/\/?$/, "/");
+    const base = `${redirectUrl.origin}${basePath}`;
+    res.redirect(`${base}?login=success`);
   } catch (err) {
     console.error(err);
     void logEvent({

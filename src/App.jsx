@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
-import Home from "./pages/Home";
+import { useEffect, useState } from "react";
 import AppMain from "./SangakuComponents/AppMain";
 import "./App.css";
 import { authUrl } from "./lib/apiBase";
 
 export default function App() {
-  const [selectedApp, setSelectedApp] = useState(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("isLoggedIn") === "true";
+  });
   const [logoutNoticeShown, setLogoutNoticeShown] = useState(false);
 
   const syncLoginStateFromServer = async () => {
@@ -42,8 +43,23 @@ export default function App() {
       // サーバ側にセッションが作られている前提なので、サーバ基準で同期する
       void syncLoginStateFromServer();
 
-      // URLをきれいにする
-      window.history.replaceState({}, "", "/");
+      // URLをきれいにする（login=success を消す。配信パス（BASE_URL）を壊さない）
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete("login");
+        window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  // 念のため：存在しないホームパスに戻されてもアプリ入口（BASE_URL）に寄せる
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const base = (import.meta?.env?.BASE_URL || "/").replace(/\/?$/, "/");
+    if (window.location.pathname === "/home" || window.location.pathname === "/home/") {
+      window.history.replaceState({}, "", base);
     }
   }, []);
 
@@ -54,10 +70,20 @@ export default function App() {
       console.error("Failed to logout:", err);
     } finally {
       setIsLoggedIn(false);
-      setSelectedApp(null);
-      window.localStorage.removeItem("isLoggedIn");
-      window.localStorage.removeItem("sangaku.selectedFormId");
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("isLoggedIn");
+        window.localStorage.removeItem("sangaku.selectedFormId");
+      }
     }
+  };
+
+  const handleLogin = () => {
+    const basePath = (import.meta?.env?.BASE_URL || "/").replace(/\/?$/, "/");
+    const returnTo =
+      typeof window !== "undefined"
+        ? encodeURIComponent(`${window.location.origin}${basePath}`)
+        : "";
+    window.location.href = authUrl(`/auth/google?returnTo=${returnTo}`);
   };
 
   // バックエンド再起動などで 401 が出たら、フロントを強制的に未ログインへ戻す
@@ -73,14 +99,13 @@ export default function App() {
         typeof window !== "undefined" && window.localStorage.getItem("isLoggedIn") === "true";
 
       setIsLoggedIn(false);
-      setSelectedApp(null);
       window.localStorage.removeItem("isLoggedIn");
       window.localStorage.removeItem("sangaku.selectedFormId");
 
       if (showNotice) {
         const fallback = wasLoggedIn
-          ? "ログイン状態が切れました。ホーム画面から再ログインしてください。"
-          : "ログインが必要です。ホーム画面からログインしてください。";
+          ? "ログイン状態が切れました。サイドバーの「ログイン」から再ログインしてください。"
+          : "ログインが必要です。サイドバーの「ログイン」からログインしてください。";
         const msg = ev?.detail?.message || fallback;
         window.alert(msg);
       }
@@ -102,37 +127,12 @@ export default function App() {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  // 🏠 ホーム画面
-  if (!selectedApp) {
-    return (
-      <Home
-        onSelectApp={setSelectedApp}
-        isLoggedIn={isLoggedIn}
-        onLogin={() => {
-          const returnTo =
-            typeof window !== "undefined" ? encodeURIComponent(window.location.origin) : "";
-          window.location.href = authUrl(`/auth/google?returnTo=${returnTo}`);
-        }}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // 🧩 アプリ分岐
-  if (selectedApp === "sangaku") {
-    return <AppMain theme="sangaku" onGoHome={() => setSelectedApp(null)} />;
-  }
-
-  // その他会合用は廃止
+  // ホーム画面は廃止し、常にメインUIを表示（ログイン/ログアウトはサイドバーで実施）
   return (
-    <Home
-      onSelectApp={setSelectedApp}
+    <AppMain
+      theme="sangaku"
       isLoggedIn={isLoggedIn}
-      onLogin={() => {
-        const returnTo =
-          typeof window !== "undefined" ? encodeURIComponent(window.location.origin) : "";
-        window.location.href = authUrl(`/auth/google?returnTo=${returnTo}`);
-      }}
+      onLogin={handleLogin}
       onLogout={handleLogout}
     />
   );

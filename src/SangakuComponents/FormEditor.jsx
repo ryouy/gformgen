@@ -209,7 +209,7 @@ export default function FormEditor({
                 <QRCodeCanvas value={formUrl} size={95} />
               ) : (
                 <div className="qr-placeholder" aria-hidden="true">
-                  <div className="qr-placeholder-text">ここにQRが表示されます</div>
+                  <div className="qr-placeholder-text">QRが<br />表示されます</div>
                 </div>
               )}
             </div>

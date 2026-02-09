@@ -1,52 +1,86 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, BarChart3, Settings } from "lucide-react";
+import { FileText, BarChart3, Settings, LogIn, LogOut, Lock } from "lucide-react";
 import "../App.css";
 import FormEditor from "./FormEditor";
 import StatsViewer from "./StatsViewer";
 import SettingsPage from "./Settings";
+import AuthGate from "./AuthGate";
 
-export default function App() {
+export default function App({ isLoggedIn, onLogin, onLogout }) {
   // デフォルトは「集計結果」タブを開く
   const [activeTab, setActiveTab] = useState("stats");
   const [createdFormId, setCreatedFormId] = useState(null);
+  const [authPromptFor, setAuthPromptFor] = useState(null); // "stats" | "form" | null
 
-  const handleGoHome = () => {
-    // ホームページに戻る処理（ルートを持つ場合は navigate("/") など）
-    window.location.href = "/"; // 例: ルート直下に戻る
+  useEffect(() => {
+    if (isLoggedIn) setAuthPromptFor(null);
+  }, [isLoggedIn]);
+
+  const requestAuth = (tab) => {
+    setActiveTab(tab);
+    setAuthPromptFor(tab);
   };
+
+  const needsAuth = !isLoggedIn && (activeTab === "stats" || activeTab === "form");
+  const isLocked = !isLoggedIn;
 
   return (
     <div className="sangaku-shell">
       <aside className="sangaku-sidebar" aria-label="ナビゲーション">
+        <div className="sangaku-brand" aria-label="アプリ名">
+          <span className="sangaku-brand-text">FCT</span>
+        </div>
+
         <button
           type="button"
-          className="sangaku-brand"
-          onClick={handleGoHome}
-          title="ホームへ戻る"
-          aria-label="ホームへ戻る"
+          className="sangaku-nav-item"
+          onClick={() => (isLoggedIn ? onLogout?.() : onLogin?.())}
+          title={isLoggedIn ? "ログアウト" : "ログイン"}
+          aria-label={isLoggedIn ? "ログアウト" : "ログイン"}
         >
-          <span className="sangaku-brand-text">FCT</span>
+          {isLoggedIn ? <LogOut size={22} /> : <LogIn size={22} />}
+          <span className="sangaku-nav-label">
+            {isLoggedIn ? "ログアウト" : "ログイン"}
+          </span>
         </button>
 
         <nav className="sangaku-nav" aria-label="ページ切替">
           <button
             type="button"
-            className={`sangaku-nav-item ${activeTab === "stats" ? "active" : ""}`}
-            onClick={() => setActiveTab("stats")}
-            title="集計結果"
+            className={`sangaku-nav-item ${activeTab === "stats" ? "active" : ""} ${
+              isLocked ? "is-locked" : ""
+            }`}
+            onClick={() => (isLoggedIn ? setActiveTab("stats") : requestAuth("stats"))}
+            title={isLocked ? "集計（ログインが必要）" : "集計結果"}
             aria-label="集計結果"
+            aria-disabled={isLocked}
+            data-tooltip={isLocked ? "ログインが必要です" : undefined}
           >
+            {isLocked && (
+              <span className="sangaku-lock-badge" aria-hidden="true">
+                <Lock size={14} />
+              </span>
+            )}
             <BarChart3 size={22} />
             <span className="sangaku-nav-label">集計</span>
           </button>
           <button
             type="button"
-            className={`sangaku-nav-item ${activeTab === "form" ? "active" : ""}`}
-            onClick={() => setActiveTab("form")}
-            title="フォーム作成"
+            className={`sangaku-nav-item ${activeTab === "form" ? "active" : ""} ${
+              isLocked ? "is-locked" : ""
+            }`}
+            onClick={() => (isLoggedIn ? setActiveTab("form") : requestAuth("form"))}
+            title={isLocked ? "作成（ログインが必要）" : "フォーム作成"}
             aria-label="フォーム作成"
+            aria-disabled={isLocked}
+            data-tooltip={isLocked ? "ログインが必要です" : undefined}
           >
+            {isLocked && (
+              <span className="sangaku-lock-badge" aria-hidden="true">
+                <Lock size={14} />
+              </span>
+            )}
             <FileText size={22} />
             <span className="sangaku-nav-label">作成</span>
           </button>
@@ -65,7 +99,13 @@ export default function App() {
 
       <div className="sangaku-main">
         <main className="content">
-          {activeTab === "form" ? (
+          {needsAuth ? (
+            <AuthGate
+              tab={authPromptFor || activeTab}
+              onLogin={onLogin}
+              onGoSettings={() => setActiveTab("settings")}
+            />
+          ) : activeTab === "form" ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <FormEditor
                 onFormCreated={({ formId: createdFormId, formUrl: createdFormUrl }) => {
