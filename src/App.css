@@ -33,13 +33,17 @@ body {
   top: 0;
   align-self: flex-start;
   height: 100vh;
-  width: 86px;
+  width: 96px;
   padding: 14px 12px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.92));
-  border-right: 1px solid rgba(148, 163, 184, 0.25);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(241, 245, 249, 0.96)
+  );
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(10px);
 }
 
@@ -77,8 +81,8 @@ body {
 }
 
 .sangaku-nav-item {
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: rgba(248, 250, 252, 0.96);
   border-radius: 16px;
   height: 54px;
   width: 100%;
@@ -88,9 +92,9 @@ body {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  color: #334155;
+  color: #0f172a;
   font-weight: 900;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
@@ -101,19 +105,69 @@ body {
 
 .sangaku-nav-item:hover {
   transform: translateY(-1px);
-  border-color: rgba(59, 130, 246, 0.45);
-  box-shadow: 0 14px 32px rgba(59, 130, 246, 0.12);
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.12);
 }
 
 .sangaku-nav-item.active {
   background: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
   color: #ffffff;
-  border-color: rgba(59, 130, 246, 0.5);
+  border-color: rgba(37, 99, 235, 0.7);
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.18);
 }
 
 .sangaku-nav-label {
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   line-height: 1;
+}
+
+.remarks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.remarks-item {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.remarks-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.remarks-company {
+  font-weight: 1000;
+  color: #0f172a;
+}
+
+.remarks-sub {
+  margin-top: 2px;
+  color: rgba(51, 65, 85, 0.85);
+  font-weight: 800;
+  font-size: 0.86rem;
+}
+
+.remarks-time {
+  color: rgba(51, 65, 85, 0.8);
+  font-weight: 900;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.remarks-text {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  line-height: 1.65;
+  color: #0f172a;
+  font-weight: 700;
 }
 
 .sangaku-main {
@@ -331,6 +385,18 @@ body {
   height: 95px;
   border-radius: 0;
   background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-placeholder-text {
+  font-size: 0.72rem;
+  line-height: 1.25;
+  color: rgba(51, 65, 85, 0.78);
+  font-weight: 800;
+  text-align: center;
+  padding: 0 6px;
 }
 
 @media (max-width: 760px) {

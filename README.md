@@ -218,6 +218,9 @@ firebase functions:secrets:set GF_OAUTH_REDIRECT_URI
 
 # 任意: CORS を絞りたい場合（既定は "*"）
 firebase functions:secrets:set GF_CORS_ORIGIN
+
+# 必須: ユーザーごとのログイン状態を分離するためのセッション暗号鍵（32文字以上）
+firebase functions:secrets:set GF_SESSION_PASSWORD
 ```
 
 設定値の例:
@@ -225,6 +228,7 @@ firebase functions:secrets:set GF_CORS_ORIGIN
 - `GF_FRONTEND_ORIGIN=https://<your-hosting-domain>`
 - `GF_OAUTH_REDIRECT_URI=https://<your-hosting-domain>/api/auth/google/callback`
 - `GF_CORS_ORIGIN=https://<your-hosting-domain>`
+- `GF_SESSION_PASSWORD=<32+ chars random>`
 
 3) Firebase deploy
 

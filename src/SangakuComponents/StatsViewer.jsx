@@ -1,5 +1,5 @@
 // src/components/StatsViewer.jsx
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "./DataTable";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
@@ -12,6 +12,7 @@ import {
   Lock,
   Trash2,
   FileText,
+  MessageSquareText,
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { apiUrl } from "../lib/apiBase";
@@ -39,6 +40,29 @@ function formatDateYMD(isoString) {
   return `${y}/${m}/${day}`;
 }
 
+function formatDateTimeYMDHM(isoString) {
+  if (!isoString) return "—";
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return "—";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${y}/${m}/${day} ${hh}:${mm}`;
+}
+
+function summarizePeople(v, { empty = "" } = {}) {
+  const s = String(v ?? "").trim();
+  if (!s) return empty;
+  const parts = s
+    .split("/")
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return parts[0] || empty;
+  return `${parts[0]}（他${parts.length - 1}名）`;
+}
+
 export default function StatsViewer({ initialFormId }) {
   const meetingTitle = "2025年10月 定例会（会津地区経営者協会）";
   const [forms, setForms] = useState([]);
@@ -51,6 +75,7 @@ export default function StatsViewer({ initialFormId }) {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [remarksOpen, setRemarksOpen] = useState(false);
   const [formsError, setFormsError] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [emptyDelayDone, setEmptyDelayDone] = useState(false);
@@ -62,7 +87,7 @@ export default function StatsViewer({ initialFormId }) {
   const fetchForms = useCallback(async () => {
     setFormsError(null);
     try {
-      const res = await fetch(apiUrl("/forms/list"));
+      const res = await fetch(apiUrl("/forms/list"), { credentials: "include" });
       if (res.status === 401) {
         notifyUnauthorized();
         throw new Error("Not logged in");
@@ -85,9 +110,9 @@ export default function StatsViewer({ initialFormId }) {
   const fetchSummary = useCallback(async (formId) => {
     if (!formId) return null;
     try {
-      const res = await fetch(
-        apiUrl(`/forms/${encodeURIComponent(formId)}/summary`)
-      );
+      const res = await fetch(apiUrl(`/forms/${encodeURIComponent(formId)}/summary`), {
+        credentials: "include",
+      });
       if (res.status === 401) {
         notifyUnauthorized();
         throw new Error("Not logged in");
@@ -129,9 +154,9 @@ export default function StatsViewer({ initialFormId }) {
 
   const fetchFormInfo = useCallback(async (formId) => {
     try {
-      const res = await fetch(
-        apiUrl(`/forms/${encodeURIComponent(formId)}/info`)
-      );
+      const res = await fetch(apiUrl(`/forms/${encodeURIComponent(formId)}/info`), {
+        credentials: "include",
+      });
       if (res.status === 401) {
         notifyUnauthorized();
         throw new Error("Not logged in");
@@ -163,9 +188,9 @@ export default function StatsViewer({ initialFormId }) {
         setRefreshing(true);
       }
       try {
-        const res = await fetch(
-          apiUrl(`/forms/${encodeURIComponent(formId)}/responses`)
-        );
+        const res = await fetch(apiUrl(`/forms/${encodeURIComponent(formId)}/responses`), {
+          credentials: "include",
+        });
         if (res.status === 401) {
           notifyUnauthorized();
           throw new Error("Not logged in");
@@ -280,6 +305,21 @@ export default function StatsViewer({ initialFormId }) {
     const t = window.setTimeout(() => setEmptyDelayDone(true), 800);
     return () => window.clearTimeout(t);
   }, [selectedFormId]);
+
+  useEffect(() => {
+    setRemarksOpen(false);
+  }, [selectedFormId]);
+
+  const remarkRows = useMemo(() => {
+    return rows
+      .filter((r) => String(r?.remarks ?? "").trim().length > 0)
+      .slice()
+      .sort((a, b) => {
+        const ta = new Date(a?.submittedAt || 0).getTime();
+        const tb = new Date(b?.submittedAt || 0).getTime();
+        return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+      });
+  }, [rows]);
 
   const normalizeTitle = useCallback(
     (t) =>
@@ -436,7 +476,7 @@ export default function StatsViewer({ initialFormId }) {
     try {
       const res = await fetch(
         apiUrl(`/forms/${encodeURIComponent(selectedFormId)}/close`),
-        { method: "POST" }
+        { method: "POST", credentials: "include" }
       );
       if (res.status === 401) {
         notifyUnauthorized();
@@ -471,7 +511,7 @@ export default function StatsViewer({ initialFormId }) {
     try {
       const res = await fetch(
         apiUrl(`/forms/${encodeURIComponent(selectedFormId)}/trash`),
-        { method: "POST" }
+        { method: "POST", credentials: "include" }
       );
       if (res.status === 401) {
         notifyUnauthorized();
@@ -642,7 +682,7 @@ export default function StatsViewer({ initialFormId }) {
                 color: acceptingResponses === false ? "#64748b" : "#059669",
               }}
             >
-              {acceptingResponses === false ? "締切済み" : "受付中"}
+              {acceptingResponses === false ? "締切済み" : "集計中"}
             </span>
             {refreshing && (
               <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 800 }}>
@@ -753,6 +793,18 @@ export default function StatsViewer({ initialFormId }) {
                   <FileText size={16} />
                   <span className="stats-action-chip-label">PDF</span>
                 </button>
+                {remarkRows.length > 0 && (
+                  <button
+                    type="button"
+                    className="stats-action-chip"
+                    onClick={() => setRemarksOpen(true)}
+                    title="備考を見る"
+                    aria-label="備考を見る"
+                  >
+                    <MessageSquareText size={16} />
+                    <span className="stats-action-chip-label">備考</span>
+                  </button>
+                )}
               </div>
 
               <div className="stats-action-divider" aria-hidden="true" />
@@ -808,12 +860,87 @@ export default function StatsViewer({ initialFormId }) {
             </div>
           )}
 
-          {/* 全体集計テーブル */}
+          {/* 全体集計テーブル（常に表示） */}
           <DataTable participants={rows} />
         </>
       )}
 
-      
+      {/* 備考モーダル（備考がある時だけ開ける） */}
+      {remarksOpen && selectedFormId && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setRemarksOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+            zIndex: 2000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: 16,
+              padding: "1rem",
+              maxWidth: 760,
+              width: "100%",
+              maxHeight: "80vh",
+              overflow: "auto",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ fontWeight: 1000, fontSize: "1rem", color: "#0f172a" }}>
+                備考一覧（{remarkRows.length}）
+              </div>
+              <button type="button" className="expand-btn" onClick={() => setRemarksOpen(false)}>
+                閉じる
+              </button>
+            </div>
+
+            {remarkRows.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "14px 0", fontWeight: 900 }}>
+                備考はまだありません
+              </div>
+            ) : (
+              <div className="remarks-list" role="region" aria-label="備考一覧">
+                {remarkRows.map((r, idx) => (
+                  <div key={`${r?.submittedAt || ""}-${idx}`} className="remarks-item">
+                    <div className="remarks-meta">
+                      <div className="remarks-left">
+                        <div className="remarks-company">{r?.company || "—"}</div>
+                        <div className="remarks-sub">
+                          {summarizePeople(r?.name, { empty: "—" })}
+                          {r?.attendance ? ` / ${r.attendance}` : ""}
+                          {Number.isFinite(Number(r?.count))
+                            ? ` / ${Number(r.count)}人`
+                            : ""}
+                        </div>
+                      </div>
+                      <div className="remarks-time">{formatDateTimeYMDHM(r?.submittedAt)}</div>
+                    </div>
+                    <div className="remarks-text">{String(r?.remarks || "").trim()}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
 {qrOpen && selectedFormId && formUrl && (
   <div
     role="dialog"

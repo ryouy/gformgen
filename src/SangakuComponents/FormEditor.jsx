@@ -60,6 +60,7 @@ export default function FormEditor({
       const res = await fetch(apiUrl("/forms/create"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           title: formData.title,
           content: formData.content,
@@ -207,7 +208,9 @@ export default function FormEditor({
               {formUrl ? (
                 <QRCodeCanvas value={formUrl} size={95} />
               ) : (
-                <div className="qr-placeholder" aria-hidden="true" />
+                <div className="qr-placeholder" aria-hidden="true">
+                  <div className="qr-placeholder-text">ここにQRが表示されます</div>
+                </div>
               )}
             </div>
           </div>

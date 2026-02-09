@@ -45,19 +45,33 @@ function readLegacyAwareSecret(gfKey, legacyKey, secretParam) {
   return process.env[legacyKey] || "";
 }
 
+// NOTE: single-user mode
+// This backend intentionally keeps OAuth tokens in memory (one global slot).
+// Backend restart / cold start => re-login required.
+let savedTokens = null;
+
 const app = express();
 const CORS_ORIGIN =
   readLegacyAwareSecret("GF_CORS_ORIGIN", "CORS_ORIGIN", CORS_ORIGIN_SECRET) || "*";
+const allowedOrigins =
+  CORS_ORIGIN === "*"
+    ? "*"
+    : CORS_ORIGIN.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
 app.use(
   cors({
-    origin:
-      CORS_ORIGIN === "*"
-        ? true
-        : CORS_ORIGIN.split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
+    credentials: true,
+    origin(origin, cb) {
+      // No Origin header (curl/same-origin navigation)
+      if (!origin) return cb(null, true);
+      if (allowedOrigins === "*") return cb(null, true);
+      return cb(null, allowedOrigins.includes(origin));
+    },
   })
 );
+
 app.use(express.json());
 app.use(requestLogger);
 
@@ -112,15 +126,25 @@ function makeOAuthClient(redirectUri) {
   );
 }
 
-// API呼び出し用（redirectUriはトークン交換時しか使わないため fallback でOK）
-let oauth2Client = null;
-function getApiOAuthClient() {
-  if (!oauth2Client) oauth2Client = makeOAuthClient(FALLBACK_OAUTH_REDIRECT_URI);
-  return oauth2Client;
+// Per-request OAuth client (avoid cross-user races in a multi-user server)
+function makeAuthedOAuthClientOrNull(_req) {
+  if (!savedTokens?.access_token && !savedTokens?.refresh_token) return null;
+  const client = makeOAuthClient(FALLBACK_OAUTH_REDIRECT_URI);
+  client.setCredentials(savedTokens);
+  return client;
 }
 
-// 開発用：メモリ保持
-let savedTokens = null;
+function getTokens(_req) {
+  return savedTokens;
+}
+
+async function setTokens(_req, _res, tokens) {
+  savedTokens = tokens;
+}
+
+async function clearTokens(_req, _res) {
+  savedTokens = null;
+}
 
 /* =========================
    OAuth 開始
@@ -168,8 +192,7 @@ async function handleAuthCallback(req, res) {
       buildRedirectUriFromRequest(req);
     const oauthForAuth = makeOAuthClient(redirectUri);
     const { tokens } = await oauthForAuth.getToken(req.query.code);
-    savedTokens = tokens;
-    getApiOAuthClient().setCredentials(tokens);
+    await setTokens(req, res, tokens);
 
     void logEvent({
       type: "oauth_success",
@@ -198,6 +221,24 @@ async function handleAuthCallback(req, res) {
 
 app.get("/auth/google/callback", handleAuthCallback);
 app.get("/api/auth/google/callback", handleAuthCallback);
+
+/* =========================
+   ログイン状態確認（サーバ基準）
+========================= */
+function handleAuthMe(req, res) {
+  const tokens = getTokens(req);
+  const loggedIn = Boolean(tokens?.access_token) || Boolean(tokens?.refresh_token);
+  return res.json({
+    loggedIn,
+    // for debugging/UX only (do not expose token itself)
+    hasRefreshToken: Boolean(tokens?.refresh_token),
+    hasAccessToken: Boolean(tokens?.access_token),
+    expiryDate: tokens?.expiry_date ?? null,
+  });
+}
+
+app.get("/auth/me", handleAuthMe);
+app.get("/api/auth/me", handleAuthMe);
 
 /* =========================
    日付日本語整形
@@ -426,6 +467,7 @@ async function migrateFileToAppProperties({ forms, drive, file }) {
 ========================= */
 app.post("/api/forms/create", async (req, res) => {
   try {
+    const savedTokens = getTokens(req);
     if (!savedTokens) {
       void logEvent({
         type: "forms_create_rejected",
@@ -434,7 +476,8 @@ app.post("/api/forms/create", async (req, res) => {
       return res.status(401).json({ error: "Not logged in" });
     }
 
-    getApiOAuthClient().setCredentials(savedTokens);
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
 
     const {
       title,
@@ -490,7 +533,7 @@ ${formTitle}
 
     const forms = google.forms({
       version: "v1",
-      auth: getApiOAuthClient(),
+      auth: authClient,
     });
 
     /* =========================
@@ -522,6 +565,25 @@ ${formTitle}
       },
     });
 
+    // 出欠（先頭に移動）
+    requests.push({
+      createItem: {
+        item: {
+          title: "出席／欠席",
+          questionItem: {
+            question: {
+              required: true,
+              choiceQuestion: {
+                type: "RADIO",
+                options: [{ value: "出席" }, { value: "欠席" }],
+              },
+            },
+          },
+        },
+        location: { index: 0 },
+      },
+    });
+
     // 事業所名
     requests.push({
       createItem: {
@@ -534,13 +596,13 @@ ${formTitle}
             },
           },
         },
-        location: { index: 0 },
+        location: { index: 1 },
       },
     });
 
     // 役職名（n）/ 氏名（n）: 氏名の1人目のみ必須、2人目以降は任意
     // 役職名は全て任意（入力負担を増やさない）
-    let cursorIndex = 1;
+    let cursorIndex = 2;
     for (let i = 1; i <= safeParticipantNameCount; i += 1) {
       // 役職名（i）
       requests.push({
@@ -577,26 +639,6 @@ ${formTitle}
       cursorIndex += 1;
     }
 
-    const attendanceIndex = cursorIndex;
-    // 出欠
-    requests.push({
-      createItem: {
-        item: {
-          title: "出席／欠席",
-          questionItem: {
-            question: {
-              required: true,
-              choiceQuestion: {
-                type: "RADIO",
-                options: [{ value: "出席" }, { value: "欠席" }],
-              },
-            },
-          },
-        },
-        location: { index: attendanceIndex },
-      },
-    });
-
     // 備考
     requests.push({
       createItem: {
@@ -611,7 +653,7 @@ ${formTitle}
             },
           },
         },
-        location: { index: attendanceIndex + 1 },
+        location: { index: cursorIndex },
       },
     });
 
@@ -624,7 +666,7 @@ ${formTitle}
 
     const drive = google.drive({
       version: "v3",
-      auth: getApiOAuthClient(),
+      auth: authClient,
     });
 
     await drive.files.update({
@@ -666,6 +708,7 @@ app.get("/api/forms/:formId/responses/raw", async (req, res) => {
   const { formId } = req.params;
 
   try {
+    const savedTokens = getTokens(req);
     if (!savedTokens) {
       void logEvent({
         type: "forms_responses_list_rejected",
@@ -681,8 +724,8 @@ app.get("/api/forms/:formId/responses/raw", async (req, res) => {
       mode: "raw",
     });
 
-    const authClient = getApiOAuthClient();
-    authClient.setCredentials(savedTokens);
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
     const forms = google.forms({ version: "v1", auth: authClient });
 
     const { responses, nextPageToken } = await listAllFormResponses(forms, formId);
@@ -718,6 +761,7 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
   const { formId } = req.params;
 
   try {
+    const savedTokens = getTokens(req);
     if (!savedTokens) {
       void logEvent({
         type: "forms_responses_list_rejected",
@@ -733,8 +777,8 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
       mode: "formatted",
     });
 
-    const authClient = getApiOAuthClient();
-    authClient.setCredentials(savedTokens);
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
     const forms = google.forms({ version: "v1", auth: authClient });
 
     const questionIdToTitle = await buildQuestionIdToTitleMap(forms, formId);
@@ -852,6 +896,7 @@ app.get("/api/forms/:formId/summary", async (req, res) => {
   const { formId } = req.params;
 
   try {
+    const savedTokens = getTokens(req);
     if (!savedTokens) {
       void logEvent({
         type: "forms_summary_rejected",
@@ -862,8 +907,8 @@ app.get("/api/forms/:formId/summary", async (req, res) => {
     }
 
     void logEvent({ type: "forms_summary_requested", formId });
-    const authClient = getApiOAuthClient();
-    authClient.setCredentials(savedTokens);
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
     const forms = google.forms({ version: "v1", auth: authClient });
 
     const questionIdToTitle = await buildQuestionIdToTitleMap(forms, formId);
@@ -920,6 +965,7 @@ app.get("/api/forms/:formId/summary", async (req, res) => {
 ========================= */
 app.get("/api/forms/list", async (req, res) => {
   try {
+    const savedTokens = getTokens(req);
     if (!savedTokens) {
       void logEvent({
         type: "forms_list_rejected",
@@ -930,8 +976,8 @@ app.get("/api/forms/list", async (req, res) => {
 
     void logEvent({ type: "forms_list_requested" });
 
-    const authClient = getApiOAuthClient();
-    authClient.setCredentials(savedTokens);
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
     const formsApi = google.forms({ version: "v1", auth: authClient });
     const drive = google.drive({ version: "v3", auth: authClient });
 
@@ -1022,6 +1068,7 @@ app.get("/api/forms/:formId/info", async (req, res) => {
   const { formId } = req.params;
 
   try {
+    const savedTokens = getTokens(req);
     if (!savedTokens) {
       void logEvent({
         type: "forms_info_rejected",
@@ -1033,8 +1080,8 @@ app.get("/api/forms/:formId/info", async (req, res) => {
 
     void logEvent({ type: "forms_info_requested", formId });
 
-    const authClient = getApiOAuthClient();
-    authClient.setCredentials(savedTokens);
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
     const forms = google.forms({ version: "v1", auth: authClient });
     const drive = google.drive({ version: "v3", auth: authClient });
 
@@ -1127,6 +1174,7 @@ app.get("/api/forms/:formId/info", async (req, res) => {
 app.post("/api/forms/:formId/close", async (req, res) => {
   const { formId } = req.params;
   try {
+    const savedTokens = getTokens(req);
     if (!savedTokens) {
       void logEvent({
         type: "forms_close_rejected",
@@ -1137,8 +1185,8 @@ app.post("/api/forms/:formId/close", async (req, res) => {
     }
 
     void logEvent({ type: "forms_close_requested", formId });
-    const authClient = getApiOAuthClient();
-    authClient.setCredentials(savedTokens);
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
 
     const forms = google.forms({ version: "v1", auth: authClient });
     const drive = google.drive({ version: "v3", auth: authClient });
@@ -1213,6 +1261,7 @@ app.post("/api/forms/:formId/close", async (req, res) => {
 app.post("/api/forms/:formId/trash", async (req, res) => {
   const { formId } = req.params;
   try {
+    const savedTokens = getTokens(req);
     if (!savedTokens) {
       void logEvent({
         type: "forms_trash_rejected",
@@ -1223,8 +1272,8 @@ app.post("/api/forms/:formId/trash", async (req, res) => {
     }
 
     void logEvent({ type: "forms_trash_requested", formId });
-    const authClient = getApiOAuthClient();
-    authClient.setCredentials(savedTokens);
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
     const drive = google.drive({ version: "v3", auth: authClient });
 
     await drive.files.update({
@@ -1264,15 +1313,34 @@ if (process.env.ENABLE_LOG_API === "true") {
    ログアウト
 ========================= */
 app.post("/auth/logout", (req, res) => {
-  savedTokens = null;
+  void clearTokens(req, res);
   void logEvent({ type: "logout" });
   res.json({ success: true });
 });
 
 app.post("/api/auth/logout", (req, res) => {
-  savedTokens = null;
+  void clearTokens(req, res);
   void logEvent({ type: "logout" });
   res.json({ success: true });
+});
+
+/* =========================
+   エラーハンドラ（実行時500の原因をログに残す）
+========================= */
+app.use((err, req, res, _next) => {
+  const message = err?.message || String(err);
+  console.error("Unhandled error:", err);
+  void logEvent({
+    type: "unhandled_error",
+    path: req?.originalUrl || req?.url,
+    message,
+  });
+
+  // 本番では内部情報を出しすぎない
+  const body = IS_FIREBASE
+    ? { error: "Internal Server Error" }
+    : { error: "Internal Server Error", message, stack: err?.stack || null };
+  res.status(500).json(body);
 });
 
 // Firebase Hosting から `/api/**` を rewrite して受ける想定（Hosting + Functions 同居）

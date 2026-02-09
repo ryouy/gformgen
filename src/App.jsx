@@ -9,21 +9,38 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [logoutNoticeShown, setLogoutNoticeShown] = useState(false);
 
-  // 🔁 永続化されたログイン状態を読み込み
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("isLoggedIn");
-    if (stored === "true") {
-      setIsLoggedIn(true);
+  const syncLoginStateFromServer = async () => {
+    try {
+      const res = await fetch(authUrl("/auth/me"), { credentials: "include" });
+      if (!res.ok) throw new Error("me_failed");
+      const data = await res.json().catch(() => ({}));
+      const loggedIn = Boolean(data?.loggedIn);
+      setIsLoggedIn(loggedIn);
+
+      if (typeof window !== "undefined") {
+        if (loggedIn) window.localStorage.setItem("isLoggedIn", "true");
+        else window.localStorage.removeItem("isLoggedIn");
+      }
+    } catch {
+      // If backend is unreachable, treat as logged out on UI to avoid stale state.
+      setIsLoggedIn(false);
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("isLoggedIn");
+      }
     }
+  };
+
+  // 🔁 起動時にサーバ基準でログイン状態を同期
+  useEffect(() => {
+    void syncLoginStateFromServer();
   }, []);
 
   // ★ OAuth成功後の判定
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("login") === "success") {
-      setIsLoggedIn(true);
-      window.localStorage.setItem("isLoggedIn", "true");
+      // サーバ側にセッションが作られている前提なので、サーバ基準で同期する
+      void syncLoginStateFromServer();
 
       // URLをきれいにする
       window.history.replaceState({}, "", "/");
@@ -32,7 +49,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await fetch(authUrl("/auth/logout"), { method: "POST" });
+      await fetch(authUrl("/auth/logout"), { method: "POST", credentials: "include" });
     } catch (err) {
       console.error("Failed to logout:", err);
     } finally {
@@ -52,15 +69,19 @@ export default function App() {
       const showNotice = !logoutNoticeShown;
       setLogoutNoticeShown(true);
 
+      const wasLoggedIn =
+        typeof window !== "undefined" && window.localStorage.getItem("isLoggedIn") === "true";
+
       setIsLoggedIn(false);
       setSelectedApp(null);
       window.localStorage.removeItem("isLoggedIn");
       window.localStorage.removeItem("sangaku.selectedFormId");
 
       if (showNotice) {
-        const msg =
-          ev?.detail?.message ||
-          "バックエンドが更新/再起動されたため、ログイン状態が切れました。ホーム画面から再ログインしてください。";
+        const fallback = wasLoggedIn
+          ? "ログイン状態が切れました。ホーム画面から再ログインしてください。"
+          : "ログインが必要です。ホーム画面からログインしてください。";
+        const msg = ev?.detail?.message || fallback;
         window.alert(msg);
       }
     };
@@ -70,6 +91,16 @@ export default function App() {
       window.removeEventListener("gformgen:unauthorized", onUnauthorized);
     };
   }, [logoutNoticeShown]);
+
+  // タブ復帰時にサーバ基準で再同期（cookie切れ/関数再デプロイ等に追従）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onFocus = () => {
+      void syncLoginStateFromServer();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
 
   // 🏠 ホーム画面
   if (!selectedApp) {
