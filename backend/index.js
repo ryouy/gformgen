@@ -14,6 +14,11 @@ app.use(requestLogger);
 const PORT = 3000;
 const FORM_NAME_TAG = "[gformgen:sangaku]"; // Drive検索で「このアプリが作ったフォーム」を判別するタグ
 const FORM_CLOSED_TAG = "[gformgen:closed]"; // アプリ上の「締切」判定用タグ（Forms APIで受付停止ができないため）
+// NOTE: タイトルにタグを出さないため、今後は Drive の appProperties をメインで使う
+const APP_PROP_APP_KEY = "gformgen_app";
+const APP_PROP_STATUS_KEY = "gformgen_status";
+const APP_PROP_APP_VALUE = "sangaku";
+const APP_PROP_STATUS_CLOSED = "closed";
 
 /* =========================
    Google OAuth 設定
@@ -188,6 +193,22 @@ function parseAcceptingResponsesFromTitle(title) {
   return null;
 }
 
+function parseAcceptingResponsesFromAppProperties(appProperties) {
+  const props = appProperties || {};
+  const app = props?.[APP_PROP_APP_KEY];
+  const status = props?.[APP_PROP_STATUS_KEY];
+  if (String(app || "") !== APP_PROP_APP_VALUE) return null;
+  if (String(status || "") === APP_PROP_STATUS_CLOSED) return false;
+  return true;
+}
+
+function mergeAppProperties(current, patch) {
+  return {
+    ...(current || {}),
+    ...(patch || {}),
+  };
+}
+
 function stripTagsFromTitle(title) {
   return String(title || "")
     .replace(`${FORM_NAME_TAG} `, "")
@@ -195,6 +216,81 @@ function stripTagsFromTitle(title) {
     .replace(FORM_NAME_TAG, "")
     .replace(FORM_CLOSED_TAG, "")
     .trim();
+}
+
+async function migrateFileToAppProperties({ forms, drive, file }) {
+  const formId = file?.id;
+  if (!formId) return { migrated: false };
+
+  const currentName = String(file?.name || "");
+  const cleanedName = stripTagsFromTitle(currentName) || currentName;
+  const currentProps = file?.appProperties || {};
+
+  // 旧タグから open/closed を推測（closed なら status=closed）
+  const acceptingFromTitle = parseAcceptingResponsesFromTitle(currentName);
+  const inferredStatus =
+    acceptingFromTitle === false ? APP_PROP_STATUS_CLOSED : undefined;
+
+  const nextProps = mergeAppProperties(currentProps, {
+    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+    ...(inferredStatus ? { [APP_PROP_STATUS_KEY]: inferredStatus } : {}),
+  });
+
+  const needsDriveUpdate =
+    String(currentProps?.[APP_PROP_APP_KEY] || "") !== APP_PROP_APP_VALUE ||
+    currentName.includes(FORM_NAME_TAG) ||
+    currentName.includes(FORM_CLOSED_TAG);
+
+  let cleanedTitle = "";
+  let needsFormsUpdate = false;
+  try {
+    const currentForm = await forms.forms.get({ formId });
+    const currentTitle = String(currentForm?.data?.info?.title || "");
+    cleanedTitle = stripTagsFromTitle(currentTitle) || currentTitle;
+    needsFormsUpdate =
+      currentTitle.includes(FORM_NAME_TAG) ||
+      currentTitle.includes(FORM_CLOSED_TAG);
+
+    if (needsFormsUpdate && cleanedTitle && cleanedTitle !== currentTitle) {
+      await forms.forms.batchUpdate({
+        formId,
+        requestBody: {
+          requests: [
+            {
+              updateFormInfo: {
+                info: { title: cleanedTitle },
+                updateMask: "title",
+              },
+            },
+          ],
+        },
+      });
+    }
+  } catch (e) {
+    // Forms更新はベストエフォート
+    console.warn("forms title migration failed:", e?.message || String(e));
+  }
+
+  if (needsDriveUpdate) {
+    try {
+      await drive.files.update({
+        fileId: formId,
+        requestBody: {
+          name: cleanedName || cleanedTitle || currentName,
+          appProperties: nextProps,
+        },
+      });
+    } catch (e) {
+      console.warn("drive migration failed:", e?.message || String(e));
+      return { migrated: false };
+    }
+  }
+
+  return {
+    migrated: Boolean(needsDriveUpdate || needsFormsUpdate),
+    cleanedName: cleanedName || cleanedTitle || currentName,
+    nextProps,
+  };
 }
 
 /* =========================
@@ -229,7 +325,8 @@ app.post("/api/forms/create", async (req, res) => {
 
     // ★ Drive / Forms に表示される最終タイトル
     const baseTitle = title ? `${title} 出席通知書` : "出席通知書";
-    const formTitle = `${FORM_NAME_TAG} ${baseTitle}`;
+    // NOTE: タグはタイトルに出さず、Drive appProperties へ移行
+    const formTitle = baseTitle;
 
     console.log("受け取ったフォームデータ:", req.body);
     void logEvent({
@@ -406,6 +503,10 @@ ${formTitle}
       fileId: formId,
       requestBody: {
         name: formTitle,
+        appProperties: {
+          [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+          // open/closed は status で管理（未設定=open扱い）
+        },
       },
     });
 
@@ -699,31 +800,76 @@ app.get("/api/forms/list", async (req, res) => {
     void logEvent({ type: "forms_list_requested" });
 
     oauth2Client.setCredentials(savedTokens);
+    const formsApi = google.forms({ version: "v1", auth: oauth2Client });
     const drive = google.drive({ version: "v3", auth: oauth2Client });
 
-    // drive.file の範囲内で、タグ付きのGoogleフォームのみ抽出
-    const q = [
+    const baseQ = [
       "trashed = false",
       "mimeType = 'application/vnd.google-apps.form'",
-      `name contains '${FORM_NAME_TAG}'`,
     ].join(" and ");
 
-    const result = await drive.files.list({
-      q,
+    // ① appProperties で抽出（タイトルにタグを出さない方式）
+    const q1 = [
+      baseQ,
+      `appProperties has { key='${APP_PROP_APP_KEY}' and value='${APP_PROP_APP_VALUE}' }`,
+    ].join(" and ");
+
+    const result1 = await drive.files.list({
+      q: q1,
       orderBy: "createdTime desc",
       pageSize: 100,
-      fields: "files(id,name,createdTime,modifiedTime)",
+      fields: "files(id,name,createdTime,modifiedTime,appProperties)",
     });
 
-    const files = result?.data?.files || [];
-    // 締切状態はタイトルタグで判定（DBなし運用向け）
-    const forms = files.map((f) => ({
-      formId: f.id,
-      title: f.name,
-      createdTime: f.createdTime,
-      modifiedTime: f.modifiedTime,
-      acceptingResponses: parseAcceptingResponsesFromTitle(f.name), // true/false/null
-    }));
+    const files1 = result1?.data?.files || [];
+
+    // ② 互換：旧方式（タイトルタグ）も常に拾う（移行のため）
+    const q2 = [baseQ, `name contains '${FORM_NAME_TAG}'`].join(" and ");
+    const result2 = await drive.files.list({
+      q: q2,
+      orderBy: "createdTime desc",
+      pageSize: 100,
+      fields: "files(id,name,createdTime,modifiedTime,appProperties)",
+    });
+    const files2 = result2?.data?.files || [];
+
+    /** @type {Map<string, any>} */
+    const byId = new Map();
+    for (const f of [...files1, ...files2]) {
+      if (!f?.id) continue;
+      if (!byId.has(f.id)) byId.set(f.id, f);
+    }
+    const files = Array.from(byId.values());
+
+    // 一覧取得のタイミングで一括移行（ベストエフォート、5件ずつ）
+    const migrateTargets = files.filter((f) => {
+      const name = String(f?.name || "");
+      const props = f?.appProperties || {};
+      const hasApp = String(props?.[APP_PROP_APP_KEY] || "") === APP_PROP_APP_VALUE;
+      const hasTag = name.includes(FORM_NAME_TAG) || name.includes(FORM_CLOSED_TAG);
+      return !hasApp || hasTag;
+    });
+
+    for (let i = 0; i < migrateTargets.length; i += 5) {
+      const chunk = migrateTargets.slice(i, i + 5);
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.allSettled(
+        chunk.map((f) => migrateFileToAppProperties({ forms: formsApi, drive, file: f }))
+      );
+    }
+
+    const forms = files.map((f) => {
+      const cleanedTitle = stripTagsFromTitle(f.name) || f.name;
+      const byProps = parseAcceptingResponsesFromAppProperties(f.appProperties);
+      const byTitle = parseAcceptingResponsesFromTitle(f.name);
+      return {
+        formId: f.id,
+        title: cleanedTitle,
+        createdTime: f.createdTime,
+        modifiedTime: f.modifiedTime,
+        acceptingResponses: byProps ?? byTitle, // appProperties 優先
+      };
+    });
 
     void logEvent({ type: "forms_list_succeeded", count: forms.length });
     return res.json({ forms });
@@ -757,16 +903,77 @@ app.get("/api/forms/:formId/info", async (req, res) => {
 
     oauth2Client.setCredentials(savedTokens);
     const forms = google.forms({ version: "v1", auth: oauth2Client });
+    const drive = google.drive({ version: "v3", auth: oauth2Client });
 
     const result = await forms.forms.get({ formId });
     const info = result?.data?.info || {};
     const responderUri = result?.data?.responderUri || "";
-    const acceptingResponses = parseAcceptingResponsesFromTitle(info?.title);
+    const driveFile = await drive.files.get({
+      fileId: formId,
+      fields: "id,name,appProperties",
+    });
+    const driveName = driveFile?.data?.name || "";
+    const appProps = driveFile?.data?.appProperties || {};
+
+    // 互換：旧タグが残っている場合、選択したタイミングで自動移行（タイトルからタグを消す）
+    const currentTitle = String(info?.title || "");
+    const nextTitle = stripTagsFromTitle(currentTitle);
+    const currentName = String(driveName || "");
+    const nextName = stripTagsFromTitle(currentName);
+    const acceptingFromTitle = parseAcceptingResponsesFromTitle(currentTitle) ?? true;
+    const inferredStatus =
+      acceptingFromTitle === false ? APP_PROP_STATUS_CLOSED : undefined;
+    const byProps = parseAcceptingResponsesFromAppProperties(appProps);
+
+    if (
+      (currentTitle.includes(FORM_NAME_TAG) || currentTitle.includes(FORM_CLOSED_TAG)) ||
+      (currentName.includes(FORM_NAME_TAG) || currentName.includes(FORM_CLOSED_TAG)) ||
+      String(appProps?.[APP_PROP_APP_KEY] || "") !== APP_PROP_APP_VALUE
+    ) {
+      try {
+        // Forms タイトルをクリーンに（ユーザーにタグを見せない）
+        if (nextTitle && nextTitle !== currentTitle) {
+          await forms.forms.batchUpdate({
+            formId,
+            requestBody: {
+              requests: [
+                {
+                  updateFormInfo: {
+                    info: { title: nextTitle },
+                    updateMask: "title",
+                  },
+                },
+              ],
+            },
+          });
+        }
+
+        // Drive 側もクリーンにし、appProperties を付与
+        const nextProps = mergeAppProperties(appProps, {
+          [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+          ...(inferredStatus ? { [APP_PROP_STATUS_KEY]: inferredStatus } : {}),
+        });
+        await drive.files.update({
+          fileId: formId,
+          requestBody: {
+            name: nextName || nextTitle || currentName || currentTitle,
+            appProperties: nextProps,
+          },
+        });
+      } catch (e) {
+        // 移行はベストエフォート（失敗しても info 自体は返す）
+        console.warn("migration failed:", e?.message || String(e));
+      }
+    }
+
+    const acceptingResponses =
+      byProps ?? parseAcceptingResponsesFromTitle(nextTitle || currentTitle);
+    const titleToReturn = nextTitle || currentTitle || nextName || currentName;
 
     void logEvent({ type: "forms_info_succeeded", formId });
     return res.json({
       formId,
-      title: info?.title || "",
+      title: titleToReturn || "",
       formUrl: responderUri,
       acceptingResponses, // true/false/null
     });
@@ -803,35 +1010,51 @@ app.post("/api/forms/:formId/close", async (req, res) => {
     const drive = google.drive({ version: "v3", auth: oauth2Client });
 
     // NOTE: Forms APIでは回答受付停止の切り替えが提供されていないため、
-    // タイトル（Forms/Drive）へ締切タグを付ける＝アプリ上で締切扱いとする。
-    const current = await forms.forms.get({ formId });
-    const currentTitle = current?.data?.info?.title || "";
-    if (currentTitle.includes(FORM_CLOSED_TAG)) {
+    // Drive appProperties で「締切」状態を表現する（タイトルにタグは出さない）
+    const driveFile = await drive.files.get({
+      fileId: formId,
+      fields: "id,name,appProperties",
+    });
+    const appProps = driveFile?.data?.appProperties || {};
+    const byProps = parseAcceptingResponsesFromAppProperties(appProps);
+    if (byProps === false) {
       return res.json({ formId, acceptingResponses: false });
     }
-    const base = stripTagsFromTitle(currentTitle);
-    const nextTitle = `${FORM_NAME_TAG} ${FORM_CLOSED_TAG} ${base}`.trim();
 
-    await forms.forms.batchUpdate({
-      formId,
-      requestBody: {
-        requests: [
-          {
-            updateFormInfo: {
-              info: {
-                title: nextTitle,
+    // 互換：旧タグが残っている場合はこのタイミングで除去
+    const current = await forms.forms.get({ formId });
+    const currentTitle = String(current?.data?.info?.title || "");
+    const cleanTitle = stripTagsFromTitle(currentTitle);
+    const currentName = String(driveFile?.data?.name || "");
+    const cleanName = stripTagsFromTitle(currentName);
+
+    if (cleanTitle && cleanTitle !== currentTitle) {
+      await forms.forms.batchUpdate({
+        formId,
+        requestBody: {
+          requests: [
+            {
+              updateFormInfo: {
+                info: { title: cleanTitle },
+                updateMask: "title",
               },
-              updateMask: "title",
             },
-          },
-        ],
-      },
+          ],
+        },
+      });
+    }
+
+    const nextProps = mergeAppProperties(appProps, {
+      [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+      [APP_PROP_STATUS_KEY]: APP_PROP_STATUS_CLOSED,
     });
 
-    // Drive側のファイル名も合わせる（検索/一覧用）
     await drive.files.update({
       fileId: formId,
-      requestBody: { name: nextTitle },
+      requestBody: {
+        name: cleanName || cleanTitle || currentName || currentTitle,
+        appProperties: nextProps,
+      },
     });
 
     void logEvent({ type: "forms_close_succeeded", formId });

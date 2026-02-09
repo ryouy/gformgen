@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, BarChart3 } from "lucide-react";
+import { FileText, BarChart3, Settings } from "lucide-react";
 import "../App.css";
 import FormEditor from "./FormEditor";
 import StatsViewer from "./StatsViewer";
+import SettingsPage from "./Settings";
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("form");
+  // デフォルトは「集計結果」タブを開く
+  const [activeTab, setActiveTab] = useState("stats");
   const [createdFormId, setCreatedFormId] = useState(null);
 
   const handleGoHome = () => {
@@ -15,57 +17,73 @@ export default function App() {
   };
 
   return (
-    <div className="app-container">
-      <header className="header modern-header">
-        <div className="header-inner">
-          {/* 左：タイトル */}
-          <h1
-            className="app-title"
-            onClick={handleGoHome}
-            style={{ cursor: "pointer" }}
-            title="ホームへ戻る"
+    <div className="sangaku-shell">
+      <aside className="sangaku-sidebar" aria-label="ナビゲーション">
+        <button
+          type="button"
+          className="sangaku-brand"
+          onClick={handleGoHome}
+          title="ホームへ戻る"
+          aria-label="ホームへ戻る"
+        >
+          <span className="sangaku-brand-text">FCT</span>
+        </button>
+
+        <nav className="sangaku-nav" aria-label="ページ切替">
+          <button
+            type="button"
+            className={`sangaku-nav-item ${activeTab === "stats" ? "active" : ""}`}
+            onClick={() => setActiveTab("stats")}
+            title="集計結果"
+            aria-label="集計結果"
           >
-            フォーム作成集計ツール
-          </h1>
+            <BarChart3 size={22} />
+            <span className="sangaku-nav-label">集計</span>
+          </button>
+          <button
+            type="button"
+            className={`sangaku-nav-item ${activeTab === "form" ? "active" : ""}`}
+            onClick={() => setActiveTab("form")}
+            title="フォーム作成"
+            aria-label="フォーム作成"
+          >
+            <FileText size={22} />
+            <span className="sangaku-nav-label">作成</span>
+          </button>
+          <button
+            type="button"
+            className={`sangaku-nav-item ${activeTab === "settings" ? "active" : ""}`}
+            onClick={() => setActiveTab("settings")}
+            title="設定"
+            aria-label="設定"
+          >
+            <Settings size={22} />
+            <span className="sangaku-nav-label">設定</span>
+          </button>
+        </nav>
+      </aside>
 
-          {/* 中央右：タブメニュー */}
-          <nav className="nav-tabs right-tabs">
-            <div
-              className={`nav-tab ${activeTab === "stats" ? "active" : ""}`}
-              onClick={() => setActiveTab("stats")}
-            >
-              <BarChart3 size={16} />
-              <span>集計結果</span>
-            </div>
-            <div
-              className={`nav-tab ${activeTab === "form" ? "active" : ""}`}
-              onClick={() => setActiveTab("form")}
-            >
-              <FileText size={16} />
-              <span>フォーム作成</span>
-            </div>
-          </nav>
-        </div>
-      </header>
-
-      {/* ▼ メイン部分 */}
-      <main className="content">
-        {activeTab === "form" ? (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <FormEditor
-              onFormCreated={({ formId: createdFormId, formUrl: createdFormUrl }) => {
-                setCreatedFormId(createdFormId || null);
-              }}
-            />
-          </motion.div>
-        ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <StatsViewer initialFormId={createdFormId} />
-          </motion.div>
-        )}
-      </main>
-
-      <footer className="footer">© 2025 Form Creator Demo</footer>
+      <div className="sangaku-main">
+        <main className="content">
+          {activeTab === "form" ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <FormEditor
+                onFormCreated={({ formId: createdFormId, formUrl: createdFormUrl }) => {
+                  setCreatedFormId(createdFormId || null);
+                }}
+              />
+            </motion.div>
+          ) : activeTab === "settings" ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <SettingsPage />
+            </motion.div>
+          ) : (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <StatsViewer initialFormId={createdFormId} />
+            </motion.div>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

@@ -15,6 +15,17 @@ export default function DataTable({ participants }) {
     return `${y}/${m}/${day} ${hh}:${mm}`;
   };
 
+  const summarizePeople = (v, { empty = "", suffix = "名" } = {}) => {
+    const s = String(v ?? "").trim();
+    if (!s) return empty;
+    const parts = s
+      .split("/")
+      .map((x) => String(x || "").trim())
+      .filter(Boolean);
+    if (parts.length <= 1) return parts[0] || empty;
+    return `${parts[0]}（他${parts.length - 1}${suffix}）`;
+  };
+
   const isAttending = (p) => p?.attendance === "出席";
   const attending = participants.filter(isAttending);
 
@@ -57,8 +68,8 @@ export default function DataTable({ participants }) {
                   className={attendingLabel === "欠席" ? "absent-row" : "present-row"}
                 >
                   <td>{p.company || ""}</td>
-                  <td>{p.role || "ー"}</td>
-                  <td>{p.name || ""}</td>
+                  <td>{summarizePeople(p.role, { empty: "ー", suffix: "名" })}</td>
+                  <td>{summarizePeople(p.name, { empty: "", suffix: "名" })}</td>
                   <td>{attendingLabel}</td>
                   <td>{Number.isFinite(Number(p?.count)) ? Number(p?.count) : 0}</td>
                   <td className="submitted-at-cell">
@@ -68,18 +79,23 @@ export default function DataTable({ participants }) {
               );
             })}
           </tbody>
-          <tfoot>
-            <tr>
-              <th colSpan="3">合計</th>
-              <th>出席事業所数：{attendanceCompanies}</th>
-              <th colSpan="2">出席人数：{totalAttendance}</th>
-            </tr>
-          </tfoot>
         </table>
 
         {hasMore && (
           <div className="table-fade-sign">⋯ さらに項目があります</div>
         )}
+      </div>
+
+      <div className="table-summary-bar" aria-label="集計サマリー">
+        <div className="table-summary-item">
+          <span className="table-summary-label">出席事業所数</span>
+          <span className="table-summary-value">{attendanceCompanies}</span>
+        </div>
+        <div className="table-summary-divider" aria-hidden="true" />
+        <div className="table-summary-item">
+          <span className="table-summary-label">合計出席人数</span>
+          <span className="table-summary-value">{totalAttendance}</span>
+        </div>
       </div>
 
       {participants.length > 10 && (

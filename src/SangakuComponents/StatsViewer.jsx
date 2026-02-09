@@ -52,6 +52,7 @@ export default function StatsViewer({ initialFormId }) {
   const [error, setError] = useState(null);
   const [formsError, setFormsError] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
+  const [emptyDelayDone, setEmptyDelayDone] = useState(false);
 
   const autoRefreshTimerRef = useRef(null);
   const lastAutoRefreshAtRef = useRef(0);
@@ -153,6 +154,8 @@ export default function StatsViewer({ initialFormId }) {
       const silent = Boolean(options?.silent);
 
       if (!silent) {
+        // 先に「空メッセージ」を引っ込めて、"読み込み中" に一本化
+        setEmptyDelayDone(false);
         setLoading(true);
         setError(null);
       } else {
@@ -208,6 +211,7 @@ export default function StatsViewer({ initialFormId }) {
         "";
 
       if (!nextId) return;
+      setEmptyDelayDone(false);
       setSelectedFormId(nextId);
       window.localStorage.setItem(SELECTED_FORM_ID_STORAGE_KEY, nextId);
       // 選択したフォームが締切済みならリストもそちらに寄せる
@@ -264,6 +268,17 @@ export default function StatsViewer({ initialFormId }) {
       if (autoRefreshTimerRef.current) clearTimeout(autoRefreshTimerRef.current);
     };
   }, [selectedFormId, fetchRows]);
+
+  // 初回表示・フォーム切替直後は「回答はまだありません」を少し待ってから出す
+  useEffect(() => {
+    if (!selectedFormId) {
+      setEmptyDelayDone(true);
+      return;
+    }
+    setEmptyDelayDone(false);
+    const t = window.setTimeout(() => setEmptyDelayDone(true), 800);
+    return () => window.clearTimeout(t);
+  }, [selectedFormId]);
 
   const normalizeTitle = useCallback(
     (t) =>
@@ -542,6 +557,7 @@ export default function StatsViewer({ initialFormId }) {
             onChange={(_, next) => {
               const id = next?.formId || "";
               if (next) setListMode(next.acceptingResponses === false ? "closed" : "open");
+              setEmptyDelayDone(false);
               setSelectedFormId(id);
               setError(null);
               setFormUrl("");
@@ -615,7 +631,7 @@ export default function StatsViewer({ initialFormId }) {
           />
           </div>
 
-          {selectedFormId && formUrl ? (
+        {selectedFormId ? (
           <div className="stats-toolbar-right">
             {/* 状態 */}
             <span
@@ -635,32 +651,61 @@ export default function StatsViewer({ initialFormId }) {
 
             {/* フォームへのリンク */}
             <span className="tooltip-wrap">
-              <a
-                href={formUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 38,
-                  height: 38,
-                  borderRadius: 12,
-                  border: "1px solid rgba(148,163,184,0.6)",
-                  background: "#fff",
-                  color: "inherit",
-                }}
-              >
-                <LinkIcon size={18} />
-              </a>
-              <span className="tooltip-bubble">フォームを開く</span>
+              {formUrl ? (
+                <a
+                  href={formUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    border: "1px solid rgba(148,163,184,0.6)",
+                    background: "#fff",
+                    color: "inherit",
+                  }}
+                >
+                  <LinkIcon size={18} />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    border: "1px solid rgba(148,163,184,0.6)",
+                    background: "#fff",
+                    color: "inherit",
+                    opacity: 0.55,
+                    cursor: "not-allowed",
+                    padding: 0,
+                  }}
+                >
+                  <LinkIcon size={18} />
+                </button>
+              )}
+              <span className="tooltip-bubble">
+                {formUrl ? "フォームを開く" : "リンク準備中…"}
+              </span>
             </span>
 
             {/* QRコード表示ボタン */}
             <span className="tooltip-wrap">
               <button
                 type="button"
-                onClick={() => setQrOpen(true)}
+                disabled={!formUrl}
+                onClick={() => {
+                  if (!formUrl) return;
+                  setQrOpen(true);
+                }}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -673,20 +718,22 @@ export default function StatsViewer({ initialFormId }) {
                   color: "#3b82f6",
                   cursor: "pointer",
                   padding: 0,
+                  opacity: formUrl ? 1 : 0.55,
                 }}
               >
                 <QrCode size={18} />
               </button>
-              <span className="tooltip-bubble">QRを表示</span>
+              <span className="tooltip-bubble">
+                {formUrl ? "QRを表示" : "QR準備中…"}
+              </span>
             </span>
           </div>
         ) : null}
         </div>
 
-        {selectedFormId && formUrl ? (
+        {selectedFormId ? (
           <div className="stats-toolbar-row stats-toolbar-row-bottom">
             <div className="stats-toolbar-bottom-spacer" />
-            {/* 出力 / 管理（グループ化・非プルダウン） */}
             <div className="stats-action-groups" aria-label="フォーム操作">
               <div className="stats-action-group" aria-label="出力">
                 <button
@@ -746,13 +793,15 @@ export default function StatsViewer({ initialFormId }) {
         </p>
       ) : loading && rows.length === 0 ? (
         <p style={{ textAlign: "center", marginTop: "1rem" }}>読み込み中…</p>
+      ) : rows.length === 0 && !emptyDelayDone && !error ? (
+        <p style={{ textAlign: "center", marginTop: "1rem" }}>読み込み中…</p>
       ) : error ? (
         <p style={{ color: "red", textAlign: "center", marginTop: "1rem" }}>
           {error}
         </p>
       ) : (
         <>
-          {rows.length === 0 && (
+          {rows.length === 0 && emptyDelayDone && (
             <div style={{ textAlign: "center", marginTop: "1rem" }}>
               <p>回答はまだありません</p>
             </div>
