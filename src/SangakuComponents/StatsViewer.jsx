@@ -14,6 +14,7 @@ import {
   FileText,
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
+import { apiUrl } from "../lib/apiBase";
 
 const FORM_NAME_TAG_PREFIX = "[gformgen:sangaku]";
 const FORM_CLOSED_TAG = "[gformgen:closed]";
@@ -61,7 +62,7 @@ export default function StatsViewer({ initialFormId }) {
   const fetchForms = useCallback(async () => {
     setFormsError(null);
     try {
-      const res = await fetch("http://localhost:3000/api/forms/list");
+      const res = await fetch(apiUrl("/forms/list"));
       if (res.status === 401) {
         notifyUnauthorized();
         throw new Error("Not logged in");
@@ -85,7 +86,7 @@ export default function StatsViewer({ initialFormId }) {
     if (!formId) return null;
     try {
       const res = await fetch(
-        `http://localhost:3000/api/forms/${encodeURIComponent(formId)}/summary`
+        apiUrl(`/forms/${encodeURIComponent(formId)}/summary`)
       );
       if (res.status === 401) {
         notifyUnauthorized();
@@ -129,7 +130,7 @@ export default function StatsViewer({ initialFormId }) {
   const fetchFormInfo = useCallback(async (formId) => {
     try {
       const res = await fetch(
-        `http://localhost:3000/api/forms/${encodeURIComponent(formId)}/info`
+        apiUrl(`/forms/${encodeURIComponent(formId)}/info`)
       );
       if (res.status === 401) {
         notifyUnauthorized();
@@ -163,7 +164,7 @@ export default function StatsViewer({ initialFormId }) {
       }
       try {
         const res = await fetch(
-          `http://localhost:3000/api/forms/${encodeURIComponent(formId)}/responses`
+          apiUrl(`/forms/${encodeURIComponent(formId)}/responses`)
         );
         if (res.status === 401) {
           notifyUnauthorized();
@@ -434,7 +435,7 @@ export default function StatsViewer({ initialFormId }) {
       return;
     try {
       const res = await fetch(
-        `http://localhost:3000/api/forms/${encodeURIComponent(selectedFormId)}/close`,
+        apiUrl(`/forms/${encodeURIComponent(selectedFormId)}/close`),
         { method: "POST" }
       );
       if (res.status === 401) {
@@ -469,7 +470,7 @@ export default function StatsViewer({ initialFormId }) {
       return;
     try {
       const res = await fetch(
-        `http://localhost:3000/api/forms/${encodeURIComponent(selectedFormId)}/trash`,
+        apiUrl(`/forms/${encodeURIComponent(selectedFormId)}/trash`),
         { method: "POST" }
       );
       if (res.status === 401) {

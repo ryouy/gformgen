@@ -7,7 +7,17 @@ import { logEvent, requestLogger, readRecentLogLines } from "./logger.js";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+app.use(
+  cors({
+    origin:
+      CORS_ORIGIN === "*"
+        ? true
+        : CORS_ORIGIN.split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+  })
+);
 app.use(express.json());
 app.use(requestLogger);
 
@@ -23,11 +33,28 @@ const APP_PROP_STATUS_CLOSED = "closed";
 /* =========================
    Google OAuth 設定
 ========================= */
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  "http://localhost:3000/auth/google/callback"
-);
+const FALLBACK_OAUTH_REDIRECT_URI =
+  process.env.OAUTH_REDIRECT_URI || "https://example.invalid/oauth2/callback";
+
+function buildRedirectUriFromRequest(req) {
+  const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
+    .split(",")[0]
+    .trim();
+  const host = String(req?.headers?.["x-forwarded-host"] || req?.get?.("host") || "").trim();
+  if (!host) return FALLBACK_OAUTH_REDIRECT_URI;
+  return `${proto}://${host}/auth/google/callback`;
+}
+
+function makeOAuthClient(redirectUri) {
+  return new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    redirectUri || FALLBACK_OAUTH_REDIRECT_URI
+  );
+}
+
+// API呼び出し用（redirectUriはトークン交換時しか使わないため fallback でOK）
+const oauth2Client = makeOAuthClient(FALLBACK_OAUTH_REDIRECT_URI);
 
 // 開発用：メモリ保持
 let savedTokens = null;
@@ -36,7 +63,13 @@ let savedTokens = null;
    OAuth 開始
 ========================= */
 app.get("/auth/google", (req, res) => {
-  const authUrl = oauth2Client.generateAuthUrl({
+  const redirectUri = process.env.OAUTH_REDIRECT_URI || buildRedirectUriFromRequest(req);
+  const oauthForAuth = makeOAuthClient(redirectUri);
+  const returnToRaw = String(req.query.returnTo || "").trim();
+  const returnTo =
+    returnToRaw && /^https?:\/\//.test(returnToRaw) ? returnToRaw : null;
+
+  const authUrl = oauthForAuth.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: [
@@ -44,6 +77,7 @@ app.get("/auth/google", (req, res) => {
       "https://www.googleapis.com/auth/forms.responses.readonly",
       "https://www.googleapis.com/auth/drive.file",
     ],
+    ...(returnTo ? { state: encodeURIComponent(returnTo) } : {}),
   });
   res.redirect(authUrl);
 });
@@ -53,14 +87,20 @@ app.get("/auth/google", (req, res) => {
 ========================= */
 app.get("/auth/google/callback", async (req, res) => {
   try {
-    const { tokens } = await oauth2Client.getToken(req.query.code);
+    const redirectUri = process.env.OAUTH_REDIRECT_URI || buildRedirectUriFromRequest(req);
+    const oauthForAuth = makeOAuthClient(redirectUri);
+    const { tokens } = await oauthForAuth.getToken(req.query.code);
     savedTokens = tokens;
     oauth2Client.setCredentials(tokens);
 
     void logEvent({
       type: "oauth_success",
     });
-    res.redirect("http://localhost:5173/?login=success");
+    const state = String(req.query.state || "").trim();
+    const returnTo = state ? decodeURIComponent(state) : null;
+    const safeReturnTo = returnTo && /^https?:\/\//.test(returnTo) ? returnTo : null;
+    const frontendOrigin = process.env.FRONTEND_ORIGIN || safeReturnTo || "/";
+    res.redirect(`${String(frontendOrigin).replace(/\/+$/, "")}/?login=success`);
   } catch (err) {
     console.error(err);
     void logEvent({
@@ -1138,5 +1178,5 @@ app.post("/auth/logout", (req, res) => {
    サーバー起動
 ========================= */
 app.listen(PORT, () => {
-  console.log(`Backend running at http://localhost:${PORT}`);
+  console.log(`Backend running on port ${PORT}`);
 });

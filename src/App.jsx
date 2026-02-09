@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Home from "./pages/Home";
 import AppMain from "./SangakuComponents/AppMain";
 import "./App.css";
+import { authUrl } from "./lib/apiBase";
 
 export default function App() {
   const [selectedApp, setSelectedApp] = useState(null);
@@ -31,7 +32,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await fetch("http://localhost:3000/auth/logout", { method: "POST" });
+      await fetch(authUrl("/auth/logout"), { method: "POST" });
     } catch (err) {
       console.error("Failed to logout:", err);
     } finally {
@@ -77,7 +78,9 @@ export default function App() {
         onSelectApp={setSelectedApp}
         isLoggedIn={isLoggedIn}
         onLogin={() => {
-          window.location.href = "http://localhost:3000/auth/google";
+          const returnTo =
+            typeof window !== "undefined" ? encodeURIComponent(window.location.origin) : "";
+          window.location.href = authUrl(`/auth/google?returnTo=${returnTo}`);
         }}
         onLogout={handleLogout}
       />
@@ -95,7 +98,9 @@ export default function App() {
       onSelectApp={setSelectedApp}
       isLoggedIn={isLoggedIn}
       onLogin={() => {
-        window.location.href = "http://localhost:3000/auth/google";
+        const returnTo =
+          typeof window !== "undefined" ? encodeURIComponent(window.location.origin) : "";
+        window.location.href = authUrl(`/auth/google?returnTo=${returnTo}`);
       }}
       onLogout={handleLogout}
     />

@@ -6,6 +6,7 @@ import { QRCodeCanvas } from "qrcode.react";
 
 import DateTimeInput from "./DateTimeInput";
 import DeadDateTimeInput from "./DeadDateTimeInput";
+import { apiUrl } from "../lib/apiBase";
 
 const DEADLINE_DAYS_BEFORE = 2; // ← 締切は◯日前
 
@@ -56,7 +57,7 @@ export default function FormEditor({
     onFormCreated?.({ formId: null });
 
     try {
-      const res = await fetch("http://localhost:3000/api/forms/create", {
+      const res = await fetch(apiUrl("/forms/create"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
