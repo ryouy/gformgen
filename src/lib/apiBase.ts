@@ -33,7 +33,8 @@ export function getApiBase(): string {
 
 /**
  * Returns backend base for non-API endpoints like `/auth/*`.
- * If prod api base is `/api` then auth base becomes "" (same-origin).
+ * In prod, prefer routing auth through the same base as API so Vercel rewrites can handle it
+ * (e.g. `/api/auth/*` when VITE_PROD_API_BASE is `/api`).
  */
 export function getAuthBase(): string {
   const runtime = getRuntime();
@@ -42,8 +43,6 @@ export function getAuthBase(): string {
   }
 
   const raw = normalizeBase(import.meta.env.VITE_PROD_API_BASE) || "/api";
-  if (raw === "/api") return "";
-  if (raw.endsWith("/api")) return raw.slice(0, -"/api".length);
   return raw;
 }
 

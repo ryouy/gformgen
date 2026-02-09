@@ -1,13 +1,53 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import { onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import { google } from "googleapis";
 import { logEvent, requestLogger, readRecentLogLines } from "./logger.js";
 
-dotenv.config();
+const IS_FIREBASE =
+  Boolean(process.env.FUNCTION_TARGET) ||
+  Boolean(process.env.FIREBASE_CONFIG) ||
+  Boolean(process.env.K_SERVICE);
+
+// Local dev only: use .env.local to avoid clashing with Firebase Functions Secrets (.env is auto-loaded by firebase-tools)
+if (!IS_FIREBASE) {
+  dotenv.config({ path: ".env.local" });
+}
+
+// Firebase Functions params/secrets (also works locally via process.env)
+// NOTE: Use GF_* keys to avoid clashing with firebase-tools auto-loading backend/.env
+// (Cloud Run rejects having both secret + non-secret env vars with the same name)
+const GOOGLE_CLIENT_ID_SECRET = defineSecret("GF_GOOGLE_CLIENT_ID");
+const GOOGLE_CLIENT_SECRET_SECRET = defineSecret("GF_GOOGLE_CLIENT_SECRET");
+const CORS_ORIGIN_SECRET = defineSecret("GF_CORS_ORIGIN");
+const FRONTEND_ORIGIN_SECRET = defineSecret("GF_FRONTEND_ORIGIN");
+const OAUTH_REDIRECT_URI_SECRET = defineSecret("GF_OAUTH_REDIRECT_URI");
+
+function readSecret(name, secretParam) {
+  try {
+    const v = secretParam?.value?.();
+    if (v) return v;
+  } catch {
+    // ignore
+  }
+  // Fallback order:
+  // 1) process.env[GF_*] for local dev without secrets
+  // 2) process.env[legacy key] for backward compatibility
+  return process.env[name] || "";
+}
+
+function readLegacyAwareSecret(gfKey, legacyKey, secretParam) {
+  // Prefer the secret (GF_*) name
+  const v = readSecret(gfKey, secretParam);
+  if (v) return v;
+  return process.env[legacyKey] || "";
+}
 
 const app = express();
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+const CORS_ORIGIN =
+  readLegacyAwareSecret("GF_CORS_ORIGIN", "CORS_ORIGIN", CORS_ORIGIN_SECRET) || "*";
 app.use(
   cors({
     origin:
@@ -34,7 +74,18 @@ const APP_PROP_STATUS_CLOSED = "closed";
    Google OAuth 設定
 ========================= */
 const FALLBACK_OAUTH_REDIRECT_URI =
-  process.env.OAUTH_REDIRECT_URI || "https://example.invalid/oauth2/callback";
+  readLegacyAwareSecret(
+    "GF_OAUTH_REDIRECT_URI",
+    "OAUTH_REDIRECT_URI",
+    OAUTH_REDIRECT_URI_SECRET
+  ) ||
+  "https://example.invalid/oauth2/callback";
+
+function getAuthCallbackPathFromRequest(req) {
+  const u = String(req?.originalUrl || req?.url || "");
+  // If auth is routed under /api (Vercel rewrite), callback must match that path too.
+  return u.startsWith("/api/") ? "/api/auth/google/callback" : "/auth/google/callback";
+}
 
 function buildRedirectUriFromRequest(req) {
   const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
@@ -42,19 +93,31 @@ function buildRedirectUriFromRequest(req) {
     .trim();
   const host = String(req?.headers?.["x-forwarded-host"] || req?.get?.("host") || "").trim();
   if (!host) return FALLBACK_OAUTH_REDIRECT_URI;
-  return `${proto}://${host}/auth/google/callback`;
+  return `${proto}://${host}${getAuthCallbackPathFromRequest(req)}`;
 }
 
 function makeOAuthClient(redirectUri) {
   return new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
+    readLegacyAwareSecret(
+      "GF_GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_ID",
+      GOOGLE_CLIENT_ID_SECRET
+    ),
+    readLegacyAwareSecret(
+      "GF_GOOGLE_CLIENT_SECRET",
+      "GOOGLE_CLIENT_SECRET",
+      GOOGLE_CLIENT_SECRET_SECRET
+    ),
     redirectUri || FALLBACK_OAUTH_REDIRECT_URI
   );
 }
 
 // API呼び出し用（redirectUriはトークン交換時しか使わないため fallback でOK）
-const oauth2Client = makeOAuthClient(FALLBACK_OAUTH_REDIRECT_URI);
+let oauth2Client = null;
+function getApiOAuthClient() {
+  if (!oauth2Client) oauth2Client = makeOAuthClient(FALLBACK_OAUTH_REDIRECT_URI);
+  return oauth2Client;
+}
 
 // 開発用：メモリ保持
 let savedTokens = null;
@@ -62,8 +125,14 @@ let savedTokens = null;
 /* =========================
    OAuth 開始
 ========================= */
-app.get("/auth/google", (req, res) => {
-  const redirectUri = process.env.OAUTH_REDIRECT_URI || buildRedirectUriFromRequest(req);
+function handleAuthGoogle(req, res) {
+  const redirectUri =
+    readLegacyAwareSecret(
+      "GF_OAUTH_REDIRECT_URI",
+      "OAUTH_REDIRECT_URI",
+      OAUTH_REDIRECT_URI_SECRET
+    ) ||
+    buildRedirectUriFromRequest(req);
   const oauthForAuth = makeOAuthClient(redirectUri);
   const returnToRaw = String(req.query.returnTo || "").trim();
   const returnTo =
@@ -80,18 +149,27 @@ app.get("/auth/google", (req, res) => {
     ...(returnTo ? { state: encodeURIComponent(returnTo) } : {}),
   });
   res.redirect(authUrl);
-});
+}
+
+app.get("/auth/google", handleAuthGoogle);
+app.get("/api/auth/google", handleAuthGoogle);
 
 /* =========================
    OAuth コールバック
 ========================= */
-app.get("/auth/google/callback", async (req, res) => {
+async function handleAuthCallback(req, res) {
   try {
-    const redirectUri = process.env.OAUTH_REDIRECT_URI || buildRedirectUriFromRequest(req);
+    const redirectUri =
+      readLegacyAwareSecret(
+        "GF_OAUTH_REDIRECT_URI",
+        "OAUTH_REDIRECT_URI",
+        OAUTH_REDIRECT_URI_SECRET
+      ) ||
+      buildRedirectUriFromRequest(req);
     const oauthForAuth = makeOAuthClient(redirectUri);
     const { tokens } = await oauthForAuth.getToken(req.query.code);
     savedTokens = tokens;
-    oauth2Client.setCredentials(tokens);
+    getApiOAuthClient().setCredentials(tokens);
 
     void logEvent({
       type: "oauth_success",
@@ -99,7 +177,14 @@ app.get("/auth/google/callback", async (req, res) => {
     const state = String(req.query.state || "").trim();
     const returnTo = state ? decodeURIComponent(state) : null;
     const safeReturnTo = returnTo && /^https?:\/\//.test(returnTo) ? returnTo : null;
-    const frontendOrigin = process.env.FRONTEND_ORIGIN || safeReturnTo || "/";
+    const frontendOrigin =
+      readLegacyAwareSecret(
+        "GF_FRONTEND_ORIGIN",
+        "FRONTEND_ORIGIN",
+        FRONTEND_ORIGIN_SECRET
+      ) ||
+      safeReturnTo ||
+      "/";
     res.redirect(`${String(frontendOrigin).replace(/\/+$/, "")}/?login=success`);
   } catch (err) {
     console.error(err);
@@ -109,7 +194,10 @@ app.get("/auth/google/callback", async (req, res) => {
     });
     res.status(500).send("OAuth failed");
   }
-});
+}
+
+app.get("/auth/google/callback", handleAuthCallback);
+app.get("/api/auth/google/callback", handleAuthCallback);
 
 /* =========================
    日付日本語整形
@@ -346,7 +434,7 @@ app.post("/api/forms/create", async (req, res) => {
       return res.status(401).json({ error: "Not logged in" });
     }
 
-    oauth2Client.setCredentials(savedTokens);
+    getApiOAuthClient().setCredentials(savedTokens);
 
     const {
       title,
@@ -402,7 +490,7 @@ ${formTitle}
 
     const forms = google.forms({
       version: "v1",
-      auth: oauth2Client,
+      auth: getApiOAuthClient(),
     });
 
     /* =========================
@@ -536,7 +624,7 @@ ${formTitle}
 
     const drive = google.drive({
       version: "v3",
-      auth: oauth2Client,
+      auth: getApiOAuthClient(),
     });
 
     await drive.files.update({
@@ -593,8 +681,9 @@ app.get("/api/forms/:formId/responses/raw", async (req, res) => {
       mode: "raw",
     });
 
-    oauth2Client.setCredentials(savedTokens);
-    const forms = google.forms({ version: "v1", auth: oauth2Client });
+    const authClient = getApiOAuthClient();
+    authClient.setCredentials(savedTokens);
+    const forms = google.forms({ version: "v1", auth: authClient });
 
     const { responses, nextPageToken } = await listAllFormResponses(forms, formId);
 
@@ -644,8 +733,9 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
       mode: "formatted",
     });
 
-    oauth2Client.setCredentials(savedTokens);
-    const forms = google.forms({ version: "v1", auth: oauth2Client });
+    const authClient = getApiOAuthClient();
+    authClient.setCredentials(savedTokens);
+    const forms = google.forms({ version: "v1", auth: authClient });
 
     const questionIdToTitle = await buildQuestionIdToTitleMap(forms, formId);
     const { responses } = await listAllFormResponses(forms, formId);
@@ -772,8 +862,9 @@ app.get("/api/forms/:formId/summary", async (req, res) => {
     }
 
     void logEvent({ type: "forms_summary_requested", formId });
-    oauth2Client.setCredentials(savedTokens);
-    const forms = google.forms({ version: "v1", auth: oauth2Client });
+    const authClient = getApiOAuthClient();
+    authClient.setCredentials(savedTokens);
+    const forms = google.forms({ version: "v1", auth: authClient });
 
     const questionIdToTitle = await buildQuestionIdToTitleMap(forms, formId);
     const { responses } = await listAllFormResponses(forms, formId);
@@ -839,9 +930,10 @@ app.get("/api/forms/list", async (req, res) => {
 
     void logEvent({ type: "forms_list_requested" });
 
-    oauth2Client.setCredentials(savedTokens);
-    const formsApi = google.forms({ version: "v1", auth: oauth2Client });
-    const drive = google.drive({ version: "v3", auth: oauth2Client });
+    const authClient = getApiOAuthClient();
+    authClient.setCredentials(savedTokens);
+    const formsApi = google.forms({ version: "v1", auth: authClient });
+    const drive = google.drive({ version: "v3", auth: authClient });
 
     const baseQ = [
       "trashed = false",
@@ -941,9 +1033,10 @@ app.get("/api/forms/:formId/info", async (req, res) => {
 
     void logEvent({ type: "forms_info_requested", formId });
 
-    oauth2Client.setCredentials(savedTokens);
-    const forms = google.forms({ version: "v1", auth: oauth2Client });
-    const drive = google.drive({ version: "v3", auth: oauth2Client });
+    const authClient = getApiOAuthClient();
+    authClient.setCredentials(savedTokens);
+    const forms = google.forms({ version: "v1", auth: authClient });
+    const drive = google.drive({ version: "v3", auth: authClient });
 
     const result = await forms.forms.get({ formId });
     const info = result?.data?.info || {};
@@ -1044,10 +1137,11 @@ app.post("/api/forms/:formId/close", async (req, res) => {
     }
 
     void logEvent({ type: "forms_close_requested", formId });
-    oauth2Client.setCredentials(savedTokens);
+    const authClient = getApiOAuthClient();
+    authClient.setCredentials(savedTokens);
 
-    const forms = google.forms({ version: "v1", auth: oauth2Client });
-    const drive = google.drive({ version: "v3", auth: oauth2Client });
+    const forms = google.forms({ version: "v1", auth: authClient });
+    const drive = google.drive({ version: "v3", auth: authClient });
 
     // NOTE: Forms APIでは回答受付停止の切り替えが提供されていないため、
     // Drive appProperties で「締切」状態を表現する（タイトルにタグは出さない）
@@ -1129,8 +1223,9 @@ app.post("/api/forms/:formId/trash", async (req, res) => {
     }
 
     void logEvent({ type: "forms_trash_requested", formId });
-    oauth2Client.setCredentials(savedTokens);
-    const drive = google.drive({ version: "v3", auth: oauth2Client });
+    const authClient = getApiOAuthClient();
+    authClient.setCredentials(savedTokens);
+    const drive = google.drive({ version: "v3", auth: authClient });
 
     await drive.files.update({
       fileId: formId,
@@ -1174,9 +1269,33 @@ app.post("/auth/logout", (req, res) => {
   res.json({ success: true });
 });
 
+app.post("/api/auth/logout", (req, res) => {
+  savedTokens = null;
+  void logEvent({ type: "logout" });
+  res.json({ success: true });
+});
+
+// Firebase Hosting から `/api/**` を rewrite して受ける想定（Hosting + Functions 同居）
+export const api = onRequest(
+  {
+    timeoutSeconds: 300,
+    cors: true,
+    secrets: [
+      GOOGLE_CLIENT_ID_SECRET,
+      GOOGLE_CLIENT_SECRET_SECRET,
+      CORS_ORIGIN_SECRET,
+      FRONTEND_ORIGIN_SECRET,
+      OAUTH_REDIRECT_URI_SECRET,
+    ],
+  },
+  app
+);
+
 /* =========================
    サーバー起動
 ========================= */
-app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
-});
+if (!IS_FIREBASE) {
+  app.listen(PORT, () => {
+    console.log(`Backend running on port ${PORT}`);
+  });
+}

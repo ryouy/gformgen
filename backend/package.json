@@ -13,10 +13,14 @@
   "author": "",
   "license": "ISC",
   "description": "",
+  "engines": {
+    "node": "20"
+  },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "firebase-functions": "^5.1.1",
     "googleapis": "^169.0.0"
   },
   "devDependencies": {
