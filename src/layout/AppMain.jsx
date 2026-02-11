@@ -30,7 +30,7 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
     <div className="sangaku-shell">
       <aside className="sangaku-sidebar" aria-label="ナビゲーション">
         <div className="sangaku-brand" aria-label="アプリ名">
-          <span className="sangaku-brand-text">FCT</span>
+          <span className="sangaku-brand-text">GFMT</span>
         </div>
 
         <nav className="sangaku-nav" aria-label="ページ切替">
