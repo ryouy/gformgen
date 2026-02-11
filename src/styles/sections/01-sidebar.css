@@ -17,11 +17,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.96),
-    rgba(241, 245, 249, 0.96)
-  );
+  background: var(--sidebar-bg);
   border-right: 1px solid rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(10px);
 }
@@ -46,7 +42,7 @@
 .sangaku-brand-text {
   font-weight: 1000;
   letter-spacing: 0.06em;
-  color: #1e3a8a;
+  color: color-mix(in srgb, var(--accent2) 70%, #1e3a8a);
 }
 
 .sangaku-nav {
@@ -94,8 +90,8 @@
 
 .sangaku-nav-item--subtle.active {
   /* 下段はグラデを使わず、控えめにアクティブ表示 */
-  background: rgba(99, 102, 241, 0.12);
-  border-color: rgba(99, 102, 241, 0.28);
+  background: rgba(var(--accent-rgb), 0.12);
+  border-color: rgba(var(--accent-rgb), 0.28);
   color: rgba(15, 23, 42, 0.95);
   box-shadow: none;
 }

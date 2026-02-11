@@ -93,6 +93,235 @@ const APP_PROP_STATUS_CLOSED = "closed";
 const APP_PROP_OWNER_SUB_KEY = "gformgen_owner_sub";
 const APP_PROP_OWNER_EMAIL_KEY = "gformgen_owner_email";
 const APP_PROP_OWNER_NAME_KEY = "gformgen_owner_name";
+
+// User settings stored on Drive as a small metadata-only file (appProperties).
+// This works with the existing minimal scope: `drive.file` (only app-created files are accessible).
+const APP_PROP_TYPE_KEY = "gformgen_type";
+const APP_PROP_TYPE_USER_SETTINGS = "user_settings";
+const APP_PROP_SETTINGS_KIND_KEY = "gformgen_settings_kind";
+const SETTINGS_KIND_DEFAULT_SCHEDULE = "default_schedule";
+const SETTINGS_KIND_THEME = "theme";
+const SETTINGS_KIND_FORM_DEFAULTS = "form_defaults";
+
+const APP_PROP_DEFAULT_WEEKS_KEY = "gformgen_default_weeks";
+const APP_PROP_DEFAULT_HOUR_KEY = "gformgen_default_hour";
+const APP_PROP_DEFAULT_MINUTE_KEY = "gformgen_default_minute";
+const APP_PROP_THEME_ACCENT_KEY = "gformgen_theme_accent";
+const APP_PROP_THEME_SCOPE_KEY = "gformgen_theme_scope"; // "accent" | "sidebar" | "dark"
+const APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY = "gformgen_default_participant_name_count";
+
+const THEME_SCOPE_ACCENT = "accent";
+const THEME_SCOPE_SIDEBAR = "sidebar";
+const THEME_SCOPE_DARK = "dark";
+
+function normalizeHexColor(input) {
+  const s = String(input || "").trim();
+  if (!s) return "";
+  // Support "#abc" and "#aabbcc"
+  const m3 = s.match(/^#([0-9a-fA-F]{3})$/);
+  if (m3) {
+    const [r, g, b] = m3[1].split("");
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  const m6 = s.match(/^#([0-9a-fA-F]{6})$/);
+  if (m6) return `#${m6[1]}`.toLowerCase();
+  return "";
+}
+
+function parseIntInRange(v, { min, max } = {}) {
+  const n = Number.parseInt(String(v ?? ""), 10);
+  if (!Number.isFinite(n)) return null;
+  if (typeof min === "number" && n < min) return null;
+  if (typeof max === "number" && n > max) return null;
+  return n;
+}
+
+function getDefaultScheduleFromProps(appProperties) {
+  const props = appProperties || {};
+  const weeksOffset = parseIntInRange(props?.[APP_PROP_DEFAULT_WEEKS_KEY], { min: 1, max: 3 }) ?? 1;
+  const hour = parseIntInRange(props?.[APP_PROP_DEFAULT_HOUR_KEY], { min: 0, max: 23 }) ?? 15;
+  const minute = parseIntInRange(props?.[APP_PROP_DEFAULT_MINUTE_KEY], { min: 0, max: 59 }) ?? 0;
+  return { weeksOffset, hour, minute };
+}
+
+function getThemeFromProps(appProperties) {
+  const props = appProperties || {};
+  const accent = normalizeHexColor(props?.[APP_PROP_THEME_ACCENT_KEY]) || "#3b82f6";
+  const scopeRaw = String(props?.[APP_PROP_THEME_SCOPE_KEY] || "").trim();
+  const scope =
+    scopeRaw === THEME_SCOPE_SIDEBAR || scopeRaw === THEME_SCOPE_DARK
+      ? scopeRaw
+      : THEME_SCOPE_SIDEBAR; // default: sidebar
+  return { accent, scope };
+}
+
+function getFormDefaultsFromProps(appProperties) {
+  const props = appProperties || {};
+  const participantNameCount =
+    parseIntInRange(props?.[APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY], { min: 1, max: 20 }) ??
+    1;
+  return { participantNameCount };
+}
+
+async function upsertThemeSettings({ drive, authUser, accent, scope }) {
+  const sub = String(authUser?.sub || "").trim();
+  if (!sub) throw new Error("Missing auth user sub");
+  const existing = await findUserSettingsFileOrNull({
+    drive,
+    authUser,
+    kind: SETTINGS_KIND_THEME,
+  });
+  const patch = {
+    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+    [APP_PROP_TYPE_KEY]: APP_PROP_TYPE_USER_SETTINGS,
+    [APP_PROP_SETTINGS_KIND_KEY]: SETTINGS_KIND_THEME,
+    [APP_PROP_OWNER_SUB_KEY]: sub,
+    ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
+    ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
+    [APP_PROP_THEME_ACCENT_KEY]: String(accent),
+    [APP_PROP_THEME_SCOPE_KEY]: String(scope),
+  };
+
+  if (!existing?.id) {
+    const created = await drive.files.create({
+      requestBody: {
+        name: "gformgen_user_settings_theme.json",
+        mimeType: "application/json",
+        appProperties: patch,
+      },
+      fields: "id,appProperties",
+    });
+    return {
+      fileId: created?.data?.id || "",
+      settings: getThemeFromProps(created?.data?.appProperties),
+    };
+  }
+
+  const nextProps = mergeAppProperties(existing?.appProperties || {}, patch);
+  const updated = await drive.files.update({
+    fileId: existing.id,
+    requestBody: { appProperties: nextProps },
+    fields: "id,appProperties",
+  });
+  return {
+    fileId: updated?.data?.id || existing.id,
+    settings: getThemeFromProps(updated?.data?.appProperties || nextProps),
+  };
+}
+
+async function upsertFormDefaultsSettings({ drive, authUser, participantNameCount }) {
+  const sub = String(authUser?.sub || "").trim();
+  if (!sub) throw new Error("Missing auth user sub");
+  const existing = await findUserSettingsFileOrNull({
+    drive,
+    authUser,
+    kind: SETTINGS_KIND_FORM_DEFAULTS,
+  });
+  const patch = {
+    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+    [APP_PROP_TYPE_KEY]: APP_PROP_TYPE_USER_SETTINGS,
+    [APP_PROP_SETTINGS_KIND_KEY]: SETTINGS_KIND_FORM_DEFAULTS,
+    [APP_PROP_OWNER_SUB_KEY]: sub,
+    ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
+    ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
+    [APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY]: String(participantNameCount),
+  };
+
+  if (!existing?.id) {
+    const created = await drive.files.create({
+      requestBody: {
+        name: "gformgen_user_settings_form_defaults.json",
+        mimeType: "application/json",
+        appProperties: patch,
+      },
+      fields: "id,appProperties",
+    });
+    return {
+      fileId: created?.data?.id || "",
+      settings: getFormDefaultsFromProps(created?.data?.appProperties),
+    };
+  }
+
+  const nextProps = mergeAppProperties(existing?.appProperties || {}, patch);
+  const updated = await drive.files.update({
+    fileId: existing.id,
+    requestBody: { appProperties: nextProps },
+    fields: "id,appProperties",
+  });
+  return {
+    fileId: updated?.data?.id || existing.id,
+    settings: getFormDefaultsFromProps(updated?.data?.appProperties || nextProps),
+  };
+}
+
+async function findUserSettingsFileOrNull({ drive, authUser, kind }) {
+  const sub = String(authUser?.sub || "").trim();
+  if (!sub) return null;
+  const q = [
+    "trashed = false",
+    `appProperties has { key='${APP_PROP_APP_KEY}' and value='${APP_PROP_APP_VALUE}' }`,
+    `appProperties has { key='${APP_PROP_TYPE_KEY}' and value='${APP_PROP_TYPE_USER_SETTINGS}' }`,
+    `appProperties has { key='${APP_PROP_SETTINGS_KIND_KEY}' and value='${String(kind || "").trim()}' }`,
+    `appProperties has { key='${APP_PROP_OWNER_SUB_KEY}' and value='${sub}' }`,
+  ].join(" and ");
+  const result = await drive.files.list({
+    q,
+    orderBy: "modifiedTime desc",
+    pageSize: 10,
+    fields: "files(id,name,modifiedTime,appProperties)",
+  });
+  const files = result?.data?.files || [];
+  return files?.[0] || null;
+}
+
+async function upsertDefaultScheduleSettings({ drive, authUser, weeksOffset, hour, minute }) {
+  const sub = String(authUser?.sub || "").trim();
+  if (!sub) throw new Error("Missing auth user sub");
+
+  const existing = await findUserSettingsFileOrNull({
+    drive,
+    authUser,
+    kind: SETTINGS_KIND_DEFAULT_SCHEDULE,
+  });
+
+  const patch = {
+    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+    [APP_PROP_TYPE_KEY]: APP_PROP_TYPE_USER_SETTINGS,
+    [APP_PROP_SETTINGS_KIND_KEY]: SETTINGS_KIND_DEFAULT_SCHEDULE,
+    [APP_PROP_OWNER_SUB_KEY]: sub,
+    ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
+    ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
+    [APP_PROP_DEFAULT_WEEKS_KEY]: String(weeksOffset),
+    [APP_PROP_DEFAULT_HOUR_KEY]: String(hour),
+    [APP_PROP_DEFAULT_MINUTE_KEY]: String(minute),
+  };
+
+  if (!existing?.id) {
+    const created = await drive.files.create({
+      requestBody: {
+        name: "gformgen_user_settings.json",
+        mimeType: "application/json",
+        appProperties: patch,
+      },
+      fields: "id,appProperties",
+    });
+    return {
+      fileId: created?.data?.id || "",
+      settings: getDefaultScheduleFromProps(created?.data?.appProperties),
+    };
+  }
+
+  const nextProps = mergeAppProperties(existing?.appProperties || {}, patch);
+  const updated = await drive.files.update({
+    fileId: existing.id,
+    requestBody: { appProperties: nextProps },
+    fields: "id,appProperties",
+  });
+  return {
+    fileId: updated?.data?.id || existing.id,
+    settings: getDefaultScheduleFromProps(updated?.data?.appProperties || nextProps),
+  };
+}
 // (Template/GAS copy mode was removed; keep form creation simple and predictable.)
 
 /* =========================
@@ -658,6 +887,175 @@ async function handleAuthMe(req, res) {
 
 app.get("/auth/me", handleAuthMe);
 app.get("/api/auth/me", handleAuthMe);
+
+/* =========================
+   User settings (per logged-in user, stored in Drive appProperties)
+========================= */
+app.get("/api/user-settings/default-schedule", async (req, res) => {
+  try {
+    const savedTokens = getTokens(req);
+    if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const authUser = await getAuthUserOrNull(req, res);
+    if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+    const drive = google.drive({ version: "v3", auth: authClient });
+    const file = await findUserSettingsFileOrNull({
+      drive,
+      authUser,
+      kind: SETTINGS_KIND_DEFAULT_SCHEDULE,
+    });
+    const settings = getDefaultScheduleFromProps(file?.appProperties);
+    return res.json({ settings, hasSaved: Boolean(file?.id) });
+  } catch (err) {
+    console.error(err);
+    const { status, message } = extractGoogleApiError(err);
+    return res
+      .status(status || 500)
+      .json({ error: message || "Failed to get settings" });
+  }
+});
+
+app.post("/api/user-settings/default-schedule", async (req, res) => {
+  try {
+    const savedTokens = getTokens(req);
+    if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const authUser = await getAuthUserOrNull(req, res);
+    if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+    const weeksOffset =
+      parseIntInRange(req?.body?.weeksOffset, { min: 1, max: 3 }) ?? null;
+    const hour = parseIntInRange(req?.body?.hour, { min: 8, max: 20 }) ?? null;
+    const minute = parseIntInRange(req?.body?.minute, { min: 0, max: 59 }) ?? null;
+
+    if (weeksOffset == null || hour == null || minute == null || minute % 15 !== 0) {
+      return res.status(400).json({ error: "Invalid settings payload" });
+    }
+
+    const drive = google.drive({ version: "v3", auth: authClient });
+    const result = await upsertDefaultScheduleSettings({
+      drive,
+      authUser,
+      weeksOffset,
+      hour,
+      minute,
+    });
+    return res.json({ ok: true, settings: result.settings });
+  } catch (err) {
+    console.error(err);
+    const { status, message } = extractGoogleApiError(err);
+    return res
+      .status(status || 500)
+      .json({ error: message || "Failed to save settings" });
+  }
+});
+
+app.get("/api/user-settings/theme", async (req, res) => {
+  try {
+    const savedTokens = getTokens(req);
+    if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const authUser = await getAuthUserOrNull(req, res);
+    if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+    const drive = google.drive({ version: "v3", auth: authClient });
+    const file = await findUserSettingsFileOrNull({ drive, authUser, kind: SETTINGS_KIND_THEME });
+    const settings = getThemeFromProps(file?.appProperties);
+    return res.json({ settings, hasSaved: Boolean(file?.id) });
+  } catch (err) {
+    console.error(err);
+    const { status, message } = extractGoogleApiError(err);
+    return res.status(status || 500).json({ error: message || "Failed to get theme" });
+  }
+});
+
+app.post("/api/user-settings/theme", async (req, res) => {
+  try {
+    const savedTokens = getTokens(req);
+    if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const authUser = await getAuthUserOrNull(req, res);
+    if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+    const accent = normalizeHexColor(req?.body?.accent) || "";
+    const scopeRaw = String(req?.body?.scope || "").trim();
+    const scope =
+      scopeRaw === THEME_SCOPE_SIDEBAR || scopeRaw === THEME_SCOPE_DARK
+        ? scopeRaw
+        : THEME_SCOPE_ACCENT;
+    if (!accent) return res.status(400).json({ error: "Invalid accent color" });
+
+    const drive = google.drive({ version: "v3", auth: authClient });
+    const result = await upsertThemeSettings({ drive, authUser, accent, scope });
+    return res.json({ ok: true, settings: result.settings });
+  } catch (err) {
+    console.error(err);
+    const { status, message } = extractGoogleApiError(err);
+    return res.status(status || 500).json({ error: message || "Failed to save theme" });
+  }
+});
+
+app.get("/api/user-settings/form-defaults", async (req, res) => {
+  try {
+    const savedTokens = getTokens(req);
+    if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const authUser = await getAuthUserOrNull(req, res);
+    if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+    const drive = google.drive({ version: "v3", auth: authClient });
+    const file = await findUserSettingsFileOrNull({
+      drive,
+      authUser,
+      kind: SETTINGS_KIND_FORM_DEFAULTS,
+    });
+    const settings = getFormDefaultsFromProps(file?.appProperties);
+    return res.json({ settings, hasSaved: Boolean(file?.id) });
+  } catch (err) {
+    console.error(err);
+    const { status, message } = extractGoogleApiError(err);
+    return res
+      .status(status || 500)
+      .json({ error: message || "Failed to get form defaults" });
+  }
+});
+
+app.post("/api/user-settings/form-defaults", async (req, res) => {
+  try {
+    const savedTokens = getTokens(req);
+    if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const authUser = await getAuthUserOrNull(req, res);
+    if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+    const participantNameCount =
+      parseIntInRange(req?.body?.participantNameCount, { min: 1, max: 20 }) ?? null;
+    if (participantNameCount == null) {
+      return res.status(400).json({ error: "Invalid settings payload" });
+    }
+
+    const drive = google.drive({ version: "v3", auth: authClient });
+    const result = await upsertFormDefaultsSettings({
+      drive,
+      authUser,
+      participantNameCount,
+    });
+    return res.json({ ok: true, settings: result.settings });
+  } catch (err) {
+    console.error(err);
+    const { status, message } = extractGoogleApiError(err);
+    return res
+      .status(status || 500)
+      .json({ error: message || "Failed to save form defaults" });
+  }
+});
 
 /* =========================
    日付日本語整形

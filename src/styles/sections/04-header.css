@@ -68,10 +68,10 @@
 
 /* ✅ アクティブタブ */
 .nav-tab.active {
-  background: #3b82f6;
+  background: var(--accent);
   color: white;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
   transform: translateY(-1px);
 }
 

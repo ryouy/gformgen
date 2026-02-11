@@ -1,5 +1,5 @@
 // src/SangakuComponents/FormEditor.jsx
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Stack, TextField, Button, Box, MenuItem } from "@mui/material";
 import dayjs from "dayjs";
 import { QRCodeCanvas } from "qrcode.react";
@@ -13,10 +13,28 @@ const DEADLINE_DAYS_BEFORE = 2; // ← 締切は◯日前
 export default function FormEditor({
   onFormCreated,
 }) {
+  const dirtyRef = useRef(false);
+  const participantDirtyRef = useRef(false);
+
+  const buildDefaultSchedule = ({ weeksOffset = 1, hour = 15, minute = 0 } = {}) => {
+    const dt = dayjs()
+      .add(Number(weeksOffset) || 1, "week")
+      .hour(Number(hour) || 15)
+      .minute(Number(minute) || 0)
+      .second(0);
+    const dl = dt
+      .subtract(DEADLINE_DAYS_BEFORE, "day")
+      .hour(17)
+      .minute(0)
+      .second(0);
+    return { datetime: dt, deadline: dl };
+  };
+
+  const initialSchedule = buildDefaultSchedule();
   const [formData, setFormData] = useState({
-    title: "会津産学懇話会10月定例会",
-    datetime: dayjs("2025-12-25 15:00"),
-    deadline: dayjs("2025-12-23 17:00"),
+    title: "会津産学懇話会　月定例会",
+    datetime: initialSchedule.datetime,
+    deadline: initialSchedule.deadline,
     place: "会津若松ワシントンホテル",
     host: "会津産学懇話会",
     participantNameCount: 1,
@@ -28,12 +46,14 @@ export default function FormEditor({
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    if (name === "participantNameCount") participantDirtyRef.current = true;
     setFormData({ ...formData, [name]: value });
   };
 
   /** 開催日時変更 → 締切自動更新 */
   const handleDateTimeChange = (val) => {
     if (!val) return;
+    dirtyRef.current = true;
 
     const autoDeadline = val
       .subtract(DEADLINE_DAYS_BEFORE, "day")
@@ -47,6 +67,52 @@ export default function FormEditor({
       deadline: autoDeadline,
     });
   };
+
+  // Load per-user default schedule from backend (Drive-backed settings).
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const [r1, r2] = await Promise.allSettled([
+          fetch(apiUrl("/user-settings/default-schedule"), { credentials: "include" }),
+          fetch(apiUrl("/user-settings/form-defaults"), { credentials: "include" }),
+        ]);
+
+        if (r1.status === "fulfilled" && r1.value.ok) {
+          const data = await r1.value.json().catch(() => ({}));
+          const s = data?.settings || {};
+          if (!cancelled && !dirtyRef.current) {
+            const next = buildDefaultSchedule({
+              weeksOffset: s.weeksOffset,
+              hour: s.hour,
+              minute: s.minute,
+            });
+            setFormData((prev) => ({
+              ...prev,
+              datetime: next.datetime,
+              deadline: next.deadline,
+            }));
+          }
+        }
+
+        if (r2.status === "fulfilled" && r2.value.ok) {
+          const data = await r2.value.json().catch(() => ({}));
+          const s = data?.settings || {};
+          if (!cancelled && !participantDirtyRef.current) {
+            const n = Number(s?.participantNameCount) || 1;
+            setFormData((prev) => ({ ...prev, participantNameCount: n }));
+          }
+        }
+      } catch {
+        // ignore (not logged in / cold start etc.)
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** フォーム作成 */
   const handleCreate = async () => {

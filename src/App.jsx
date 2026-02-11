@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppMain from "./layout/AppMain";
 import "./App.css";
-import { authUrl } from "./lib/apiBase";
+import { apiUrl, authUrl } from "./lib/apiBase";
+import { applyAppThemeToDom } from "./lib/appTheme";
+import { ThemeProvider } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
+import { buildMuiTheme } from "./lib/muiTheme";
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
@@ -9,6 +13,16 @@ export default function App() {
     return window.localStorage.getItem("isLoggedIn") === "true";
   });
   const [logoutNoticeShown, setLogoutNoticeShown] = useState(false);
+  const themeAppliedRef = useRef(false);
+  const [appTheme, setAppTheme] = useState(() => {
+    try {
+      const cached = window.localStorage.getItem("gformgen.theme");
+      if (cached) return JSON.parse(cached);
+    } catch {
+      // ignore
+    }
+    return { accent: "#3b82f6", scope: "sidebar" };
+  });
 
   const syncLoginStateFromServer = async ({ keepCurrentOnError = false } = {}) => {
     try {
@@ -79,6 +93,68 @@ export default function App() {
 
     void run();
   }, []);
+
+  // Apply per-user theme after login (Drive-backed settings).
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!isLoggedIn) {
+        setAppTheme({ accent: "#3b82f6", scope: "sidebar" });
+        applyAppThemeToDom({ accent: "#3b82f6", scope: "sidebar" });
+        themeAppliedRef.current = false;
+        return;
+      }
+
+      // Fast path: apply cached theme immediately (no network wait).
+      if (!themeAppliedRef.current) {
+        try {
+          const cached = window.localStorage.getItem("gformgen.theme");
+          if (cached) {
+            const s = JSON.parse(cached);
+            setAppTheme(s);
+            applyAppThemeToDom(s);
+          }
+        } catch {
+          // ignore
+        }
+        themeAppliedRef.current = true;
+      }
+
+      try {
+        const res = await fetch(apiUrl("/user-settings/theme"), { credentials: "include" });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const s = data?.settings || {};
+        setAppTheme(s);
+        applyAppThemeToDom(s);
+        try {
+          window.localStorage.setItem("gformgen.theme", JSON.stringify(s));
+        } catch {
+          // ignore
+        }
+      } catch {
+        // ignore
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn]);
+
+  // Keep appTheme in sync when Settings page toggles dark mode etc.
+  useEffect(() => {
+    const onTheme = (e) => {
+      const d = e?.detail || {};
+      if (!d?.accent) return;
+      setAppTheme(d);
+    };
+    window.addEventListener("gformgen:theme", onTheme);
+    return () => window.removeEventListener("gformgen:theme", onTheme);
+  }, []);
+
+  const muiTheme = useMemo(() => buildMuiTheme(appTheme), [appTheme]);
 
   // Safari等で OAuth 後に BFCache から復帰すると、初期useEffectが再実行されずUIが古いままになることがある。
   // pageshow で復帰を検知してログイン状態を再同期する。
@@ -196,11 +272,14 @@ export default function App() {
 
   // ホーム画面は廃止し、常にメインUIを表示（ログイン/ログアウトはサイドバーで実施）
   return (
-    <AppMain
-      theme="sangaku"
-      isLoggedIn={isLoggedIn}
-      onLogin={handleLogin}
-      onLogout={handleLogout}
-    />
+    <ThemeProvider theme={muiTheme}>
+      <CssBaseline />
+      <AppMain
+        theme="sangaku"
+        isLoggedIn={isLoggedIn}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+      />
+    </ThemeProvider>
   );
 }

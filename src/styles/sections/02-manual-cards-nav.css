@@ -83,7 +83,7 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  color: #0f172a;
+  color: var(--app-text);
   font-weight: 900;
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
@@ -96,15 +96,15 @@
 
 .sangaku-nav-item:hover {
   transform: translateY(-1px);
-  border-color: rgba(37, 99, 235, 0.55);
-  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.12);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  box-shadow: 0 14px 32px rgba(var(--accent-rgb), 0.12);
 }
 
 .sangaku-nav-item.active {
-  background: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, var(--accent2) 0%, var(--accent) 100%);
   color: #ffffff;
-  border-color: rgba(37, 99, 235, 0.7);
-  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.18);
+  border-color: rgba(var(--accent-rgb), 0.7);
+  box-shadow: 0 16px 34px rgba(var(--accent-rgb), 0.18);
 }
 
 .sangaku-nav-item.is-locked {

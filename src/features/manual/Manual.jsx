@@ -250,6 +250,39 @@ export default function ManualPage() {
           </>
         ),
       },
+      {
+        id: "s11",
+        title: "11. 開発者について",
+        body: (
+          <>
+            <ul style={{ marginTop: 8 }}>
+              <li>
+                <b>氏名</b>：松下 稜（会津大学 計算社会学研究室）
+              </li>
+              <li>
+                <b>Mail</b>：
+                <a
+                  href="mailto:s1300041@u-aizu.ac.jp"
+                  style={{ color: "#1d4ed8", textUnderlineOffset: 3, marginLeft: 6 }}
+                >
+                  s1300041@u-aizu.ac.jp
+                </a>
+              </li>
+              <li>
+                <b>技術</b>：
+                <a
+                  href="https://github.com/ryouy/gformgen"
+                  style={{ color: "#1d4ed8", textUnderlineOffset: 3, marginLeft: 6 }}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  github.com/ryouy/gformgen
+                </a>
+              </li>
+            </ul>
+          </>
+        ),
+      },
     ],
     [],
   );

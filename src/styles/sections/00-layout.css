@@ -4,12 +4,35 @@
 body {
   margin: 0;
   font-family: "Noto Sans JP", "Inter", sans-serif;
-  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
-  color: #333;
+  background: var(--app-bg, linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%));
+  color: var(--app-text, #333);
+  transition: background 220ms ease, color 220ms ease;
 }
 
 :root {
   --mobile-nav-h: 74px; /* 下部ナビの想定高さ（safe-area は別途加算） */
+  --accent: #3b82f6;
+  --accent2: #2563eb;
+  --accent-rgb: 59, 130, 246;
+  --app-text: #0f172a;
+  --app-bg: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  --panel-bg: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  --sidebar-bg: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(241, 245, 249, 0.96)
+  );
+}
+
+html[data-theme="dark"] {
+  --app-text: #e5e7eb;
+  --app-bg: linear-gradient(135deg, #0b1220 0%, #0f172a 100%);
+  --panel-bg: linear-gradient(
+    180deg,
+    rgba(30, 41, 59, 0.92) 0%,
+    rgba(15, 23, 42, 0.92) 100%
+  );
+  --sidebar-bg: linear-gradient(180deg, rgba(2, 6, 23, 0.92), rgba(15, 23, 42, 0.92));
 }
 
 * {

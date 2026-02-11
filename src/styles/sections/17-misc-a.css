@@ -40,15 +40,15 @@
 }
 
 .pretty-select:hover {
-  border-color: rgba(59, 130, 246, 0.55);
-  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.12);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  box-shadow: 0 10px 24px rgba(var(--accent-rgb), 0.12);
 }
 
 .pretty-select:focus {
   outline: none;
-  border-color: rgba(59, 130, 246, 0.75);
+  border-color: rgba(var(--accent-rgb), 0.75);
   box-shadow:
-    0 0 0 4px rgba(59, 130, 246, 0.18),
+    0 0 0 4px rgba(var(--accent-rgb), 0.18),
     0 14px 30px rgba(15, 23, 42, 0.12);
 }
 
