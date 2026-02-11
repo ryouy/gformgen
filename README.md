@@ -1,6 +1,6 @@
 ---
 
-# FMT Google Form Management Tool
+# GFMT [Google Form Management Tool]
 
 A small admin tool to **programmatically create, rediscover, and aggregate Google Forms**.
 
