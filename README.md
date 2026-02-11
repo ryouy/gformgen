@@ -1,5 +1,3 @@
----
-
 # GFMT [Google Form Management Tool]
 
 A small admin tool to **programmatically create, rediscover, and aggregate Google Forms**.
@@ -13,6 +11,12 @@ A small admin tool to **programmatically create, rediscover, and aggregate Googl
 ## Live demo
 
 * https://gfca-aizu.web.app
+
+---
+
+## Philosophy
+
+Treat Google Drive as the database. Everything else is just a view.
 
 ---
 
@@ -138,9 +142,3 @@ Caching:
 
 * `index.html` is served with **no-cache**
 * `/assets/**` is long-term cached (immutable)
-
----
-
-## Philosophy
-
-Treat Google Drive as the database. Everything else is just a view.
