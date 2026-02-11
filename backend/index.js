@@ -93,6 +93,7 @@ const APP_PROP_STATUS_CLOSED = "closed";
 const APP_PROP_OWNER_SUB_KEY = "gformgen_owner_sub";
 const APP_PROP_OWNER_EMAIL_KEY = "gformgen_owner_email";
 const APP_PROP_OWNER_NAME_KEY = "gformgen_owner_name";
+// (Template/GAS copy mode was removed; keep form creation simple and predictable.)
 
 /* =========================
    Google OAuth 設定
@@ -287,9 +288,49 @@ async function fetchGoogleUserInfo(authClient) {
   };
 }
 
+function tryDecodeJwtPayload(jwt) {
+  const s = String(jwt || "").trim();
+  const parts = s.split(".");
+  if (parts.length < 2) return null;
+  const payload = parts[1];
+  try {
+    const buf = base64UrlDecode(payload);
+    const obj = JSON.parse(buf.toString("utf8"));
+    return obj && typeof obj === "object" ? obj : null;
+  } catch {
+    return null;
+  }
+}
+
+function userFromIdToken(tokens) {
+  const idToken = tokens?.id_token;
+  if (!idToken) return null;
+  const payload = tryDecodeJwtPayload(idToken);
+  if (!payload) return null;
+  const sub = String(payload?.sub || payload?.user_id || "").trim();
+  const email = String(payload?.email || "").trim();
+  const name = String(payload?.name || payload?.given_name || "").trim();
+  if (!sub) return null;
+  return { sub, email, name };
+}
+
 async function getAuthUserOrNull(req, res) {
   const cached = getSavedUser(req);
   if (cached?.sub) return cached;
+
+  // Fast path: derive from id_token (no extra network call).
+  const tokens = getTokens(req);
+  const fromIdToken = userFromIdToken(tokens);
+  if (fromIdToken?.sub) {
+    if (!getSessionSecret()) savedUser = fromIdToken; // fallback only
+    try {
+      setUserCookie(req, res, fromIdToken);
+    } catch {
+      // ignore
+    }
+    return fromIdToken;
+  }
+
   const authClient = makeAuthedOAuthClientOrNull(req);
   if (!authClient) return null;
   try {
@@ -508,6 +549,13 @@ async function handleAuthCallback(req, res) {
 
     // Fetch user profile (best-effort) and persist to cookie for later owner checks.
     try {
+      // Prefer id_token (available when openid scope is granted).
+      const fromIdToken = userFromIdToken(tokens);
+      if (fromIdToken?.sub) {
+        savedUser = fromIdToken; // fallback only
+        setUserCookie(req, res, fromIdToken);
+      }
+
       const client = makeOAuthClient(redirectUri);
       client.setCredentials(tokens);
       const user = await fetchGoogleUserInfo(client);
@@ -588,10 +636,10 @@ app.get("/api/auth/google/callback", handleAuthCallback);
 /* =========================
    ログイン状態確認（サーバ基準）
 ========================= */
-function handleAuthMe(req, res) {
+async function handleAuthMe(req, res) {
   const tokens = getTokens(req);
   const loggedIn = Boolean(tokens?.access_token) || Boolean(tokens?.refresh_token);
-  const user = getSavedUser(req);
+  const user = await getAuthUserOrNull(req, res);
   return res.json({
     loggedIn,
     // for debugging/UX only (do not expose token itself)
@@ -616,18 +664,43 @@ app.get("/api/auth/me", handleAuthMe);
 ========================= */
 const formatDateJP = (isoString, withTime = false) => {
   if (!isoString) return "";
-
   const d = new Date(isoString);
-  const week = ["日", "月", "火", "水", "木", "金", "土"];
+  if (!Number.isFinite(d.getTime())) return "";
 
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
-  const w = week[d.getDay()];
+  // IMPORTANT:
+  // Frontend sends `toISOString()` (UTC). Backend often runs in UTC (Cloud Functions),
+  // so using `getHours()` would show UTC time. We must render in JST for user-facing text.
+  const dateParts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+  }).formatToParts(d);
+
+  const map = {};
+  for (const p of dateParts) {
+    if (p?.type && p.type !== "literal") map[p.type] = p.value;
+  }
+  const y = map.year || "";
+  const m = map.month || "";
+  const day = map.day || "";
+  // ja-JP weekday short is like "月", "火", ...
+  const w = map.weekday || "";
 
   if (withTime) {
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mm = String(d.getMinutes()).padStart(2, "0");
+    const timeParts = new Intl.DateTimeFormat("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(d);
+    const t = {};
+    for (const p of timeParts) {
+      if (p?.type && p.type !== "literal") t[p.type] = p.value;
+    }
+    const hh = String(t.hour || "").padStart(2, "0");
+    const mm = String(t.minute || "").padStart(2, "0");
     return `${y}年${m}月${day}日（${w}）${hh}:${mm}`;
   }
 
@@ -936,24 +1009,17 @@ ${formTitle}
 （TEL）23-8511（会津地区経営者協会内）
 `.trim();
 
-    const forms = google.forms({
-      version: "v1",
-      auth: authClient,
-    });
+    const forms = google.forms({ version: "v1", auth: authClient });
+    const drive = google.drive({ version: "v3", auth: authClient });
 
     /* =========================
-       ① フォーム作成（仮）
+       ① フォーム作成
     ========================= */
-    const createResult = await forms.forms.create({
-      requestBody: {
-        info: {
-          title: formTitle, // 仮でもOK
-        },
-      },
+    const created = await forms.forms.create({
+      requestBody: { info: { title: formTitle } },
     });
-
-    const formId = createResult.data.formId;
-    const responderUri = createResult.data.responderUri;
+    const formId = String(created?.data?.formId || "").trim();
+    if (!formId) throw new Error("Form create failed: missing formId");
 
     /* =========================
        ② batchUpdate（★ここが重要）
@@ -1069,18 +1135,13 @@ ${formTitle}
       },
     });
 
-    const drive = google.drive({
-      version: "v3",
-      auth: authClient,
-    });
-
+    // Ensure Drive metadata/appProperties are set even in fallback create path.
     await drive.files.update({
       fileId: formId,
       requestBody: {
         name: formTitle,
         appProperties: {
           [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
-          // open/closed は status で管理（未設定=open扱い）
           ...(authUser?.sub
             ? {
                 [APP_PROP_OWNER_SUB_KEY]: String(authUser.sub),
@@ -1091,6 +1152,8 @@ ${formTitle}
         },
       },
     });
+
+    const responderUri = String(created?.data?.responderUri || "").trim();
 
     /* =========================
        フロントへ返却
@@ -1105,11 +1168,14 @@ ${formTitle}
     });
   } catch (err) {
     console.error(err);
+    const { status, message } = extractGoogleApiError(err);
     void logEvent({
       type: "forms_create_failed",
-      message: err?.message || String(err),
+      message: message || err?.message || String(err),
     });
-    res.status(500).json({ error: "Failed to create form" });
+    res
+      .status(status || 500)
+      .json({ error: message || "Failed to create form" });
   }
 });
 
@@ -1400,6 +1466,10 @@ app.get("/api/forms/list", async (req, res) => {
     const authClient = makeAuthedOAuthClientOrNull(req);
     if (!authClient) return res.status(401).json({ error: "Not logged in" });
     const authUser = await getAuthUserOrNull(req, res);
+    if (!authUser?.sub) {
+      // Fail-closed: without knowing "who", we can't safely filter by owner.
+      return res.status(401).json({ error: "Failed to determine logged-in user" });
+    }
     const formsApi = google.forms({ version: "v1", auth: authClient });
     const drive = google.drive({ version: "v3", auth: authClient });
 
