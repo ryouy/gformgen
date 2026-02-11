@@ -1,0 +1,218 @@
+/* -------------------------------
+📊 テーブルデザイン
+--------------------------------*/
+.table-scroll-container {
+  position: relative;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.data-table th,
+.data-table td {
+  text-align: center;
+  vertical-align: middle;
+  padding: 0.8rem;
+  border: 1px solid #e5e7eb;
+}
+
+.data-table th {
+  background: #f3f4f6;
+  font-weight: 600;
+  color: #374151;
+}
+
+.data-table td {
+  color: #555;
+}
+
+.submitted-at-cell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+}
+
+/* 合計表示（テーブル外に出して見た目を整える） */
+.table-summary-bar {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+}
+
+@media (max-width: 600px) {
+  .data-table th,
+  .data-table td {
+    padding: 0.6rem;
+    font-size: 0.86rem;
+  }
+
+  .table-summary-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    text-align: center;
+  }
+  .table-summary-divider {
+    display: none;
+  }
+  .table-summary-item {
+    justify-content: center;
+  }
+}
+
+.table-summary-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.table-summary-label {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #334155;
+}
+
+.table-summary-value {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.table-summary-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(148, 163, 184, 0.4);
+}
+
+.data-table tfoot {
+  display: none; /* 旧 tfoot は使わない */
+}
+
+.multi-line-cell {
+  white-space: pre-line;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.stats-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.stats-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.stats-toolbar-row-top {
+  /* 中央：タブ＋フォーム検索、右：操作、を常に「左右中央」で揃える */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+.stats-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.stats-toolbar-top-spacer {
+  min-width: 0;
+}
+
+.stats-toolbar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.stats-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+@media (max-width: 700px) {
+  .stats-toolbar-row-top {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .stats-toolbar-top-spacer {
+    display: none;
+  }
+  .stats-toolbar-center {
+    width: 100%;
+  }
+  .stats-toolbar-right {
+    width: 100%;
+    justify-content: center;
+  }
+}
+.stats-toolbar-row-bottom {
+  justify-content: flex-end;
+}
+
+.stats-toolbar-bottom-spacer {
+  flex: 1;
+}
+
+.data-table tfoot th {
+  background: #ffffff;
+  font-weight: bold;
+}
+
+/* 出席・欠席行 */
+.present-row {
+  background: transparent;
+  font-weight: 400;
+}
+.absent-row {
+  background: transparent;
+  color: #64748b;
+}
+
+/* シンプル＆見やすい：うっすらゼブラ＋hover */
+.data-table tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+.data-table tbody tr:hover {
+  background: #eef2ff;
+}
+
+/* フェードサイン */
+.table-fade-sign {
+  text-align: center;
+  color: #888;
+  font-size: 1.2rem;
+  margin-top: 0.5rem;
+  animation: blink 1.8s infinite ease-in-out;
+}
+

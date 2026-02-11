@@ -1,0 +1,39 @@
+/* -------------------------------
+📋 フォーム（右半分上下中央配置）
+--------------------------------*/
+.form-centered-wrapper {
+  display: flex;
+  justify-content: flex-end; /* 👈 右寄せ配置 */
+  align-items: center; /* 上下中央 */
+  min-height: 100dvh;
+  width: 100%;
+  position: relative;
+  padding-right: 5%;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+}
+
+/* 📋 フォームカード */
+.form-card {
+  width: 45%;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 2.5rem 3rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.5rem;
+  animation: fadeIn 0.5s ease;
+}
+
+@media (max-width: 860px) {
+  .form-centered-wrapper {
+    justify-content: center;
+    padding: 1rem;
+  }
+  .form-card {
+    width: min(100%, 560px);
+    padding: 1.4rem 1.2rem;
+  }
+}
+

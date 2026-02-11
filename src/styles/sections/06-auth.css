@@ -1,0 +1,93 @@
+/* -------------------------------
+🔐 未ログイン時のガード（メイン領域）
+--------------------------------*/
+.auth-gate {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+}
+
+.auth-gate-card {
+  width: 100%;
+  max-width: 560px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 250, 252, 1));
+  border-radius: 18px;
+  padding: 22px 22px 18px;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.1);
+  text-align: center;
+}
+
+.auth-gate-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: rgba(99, 102, 241, 0.12);
+  color: #3730a3;
+  margin: 0 auto 10px;
+}
+
+.auth-gate-title {
+  margin: 0;
+  color: #0f172a;
+  font-weight: 1000;
+  letter-spacing: 0.01em;
+}
+
+.auth-gate-text {
+  margin: 10px 0 16px;
+  color: rgba(15, 23, 42, 0.78);
+  line-height: 1.7;
+  font-weight: 800;
+}
+
+.auth-gate-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.auth-gate-btn {
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  padding: 10px 14px;
+  font-weight: 900;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.auth-gate-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.12);
+}
+
+.auth-gate-btn-primary {
+  background: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
+  color: #ffffff;
+  border-color: rgba(37, 99, 235, 0.7);
+}
+
+.auth-gate-btn-primary:hover {
+  box-shadow: 0 16px 36px rgba(37, 99, 235, 0.18);
+}
+
+.auth-gate-hint {
+  margin-top: 12px;
+  color: rgba(51, 65, 85, 0.75);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+

@@ -1,0 +1,103 @@
+/* -------------------------------
+🧷 フォーム下部バー（作成 + QR + 確認）
+--------------------------------*/
+.form-bottom-bar {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 3rem;
+  margin-top: 1.5rem;
+  padding: 1rem 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  justify-content: center; /* ✅ 中身を中央寄せ */
+}
+
+.form-bottom-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: center; /* ✅ ボタン2つも中央に揃える */
+}
+
+.form-bottom-bar .action-btn {
+  min-width: 190px;
+  border-radius: 14px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0;
+  padding: 0.65rem 1.05rem !important;
+}
+
+.form-bottom-bar .action-secondary {
+  border-width: 1.5px !important;
+}
+
+.form-bottom-bar .action-btn.Mui-disabled {
+  opacity: 0.55;
+}
+
+.qr-inline {
+  width: 104px;
+  height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.qr-inline.is-placeholder {
+  background: transparent;
+  box-shadow: none;
+  border: 1px dashed rgba(148, 163, 184, 0.55);
+}
+
+.qr-placeholder {
+  width: 95px;
+  height: 95px;
+  border-radius: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-placeholder-text {
+  font-size: 0.72rem;
+  line-height: 1.25;
+  color: rgba(51, 65, 85, 0.78);
+  font-weight: 800;
+  text-align: center;
+  padding: 0 6px;
+}
+
+@media (max-width: 760px) {
+  .form-bottom-bar {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+  .form-bottom-actions {
+    align-items: center;
+  }
+  .form-bottom-bar .action-btn {
+    width: 100%;
+    max-width: 360px;
+  }
+}
+
+@keyframes fadeContent {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+

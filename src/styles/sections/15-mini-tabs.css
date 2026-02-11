@@ -1,0 +1,28 @@
+/* -------------------------------
+🧭 集計中/締切済みのミニ切替
+--------------------------------*/
+.mini-tabs {
+  display: inline-flex;
+  background: rgba(245, 245, 245, 0.7);
+  padding: 4px;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.mini-tab {
+  border: none;
+  background: transparent;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #334155;
+}
+
+.mini-tab.active {
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  color: #1e3a8a;
+}
+

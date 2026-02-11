@@ -1,0 +1,131 @@
+/* -------------------------------
+📘 設定：説明書（章トグル → 右吹き出し）
+--------------------------------*/
+.manual-lead {
+  margin: 0 0 12px;
+  color: rgba(15, 23, 42, 0.78);
+  font-weight: 800;
+}
+
+.manual-shell {
+  display: grid;
+  /* 左ペインを少し可変にして、章一覧を2列にしても読みやすくする */
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.manual-list {
+  /*
+    章が多いと縦に長くなりすぎるので、デスクトップは2列で省スペースに。
+    ※モバイル（max-width: 860px）では既存の横並びUIを優先して下の@mediaで上書き。
+  */
+  column-count: 2;
+  column-gap: 10px;
+  /* 画面が低いときの保険（章が多い場合はここだけスクロール） */
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.manual-item {
+  text-align: left;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(248, 250, 252, 0.96);
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-weight: 950;
+  color: rgba(15, 23, 42, 0.9);
+  cursor: pointer;
+  /* multi-column 用（1項目が途中で折れない & 1列幅いっぱい） */
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 8px;
+  break-inside: avoid;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.manual-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.1);
+}
+
+.manual-item.is-active {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(59, 130, 246, 0.1));
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.12);
+}
+
+.manual-bubble {
+  position: relative;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 250, 252, 1));
+  border-radius: 18px;
+  padding: 16px 16px 14px;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.1);
+  min-height: 220px;
+}
+
+/* 吹き出しのしっぽ（左向き） */
+.manual-bubble::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 22px;
+  width: 0;
+  height: 0;
+  border-top: 10px solid transparent;
+  border-bottom: 10px solid transparent;
+  border-right: 10px solid rgba(255, 255, 255, 1);
+  filter: drop-shadow(-1px 0 0 rgba(15, 23, 42, 0.12));
+}
+
+.manual-bubble-title {
+  font-weight: 1000;
+  color: #0f172a;
+  margin-bottom: 10px;
+}
+
+.manual-bubble-body {
+  color: rgba(15, 23, 42, 0.92);
+  font-weight: 800;
+  line-height: 1.85;
+}
+
+.manual-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  font-weight: 850;
+  color: rgba(15, 23, 42, 0.85);
+}
+
+@media (max-width: 860px) {
+  .manual-shell {
+    grid-template-columns: 1fr;
+  }
+  .manual-list {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+    column-count: 1;
+    column-gap: 0;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .manual-item {
+    width: fit-content;
+    display: inline-flex;
+    margin: 0;
+  }
+  .manual-bubble::before {
+    display: none;
+  }
+}
+

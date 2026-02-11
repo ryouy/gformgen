@@ -1,0 +1,77 @@
+/* -------------------------------
+🧩 StatsViewer 操作ボタン（グループ化）
+--------------------------------*/
+.stats-action-groups {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 9999px;
+  background: rgba(248, 250, 252, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.stats-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-action-divider {
+  width: 1px;
+  height: 22px;
+  background: rgba(148, 163, 184, 0.4);
+}
+
+.stats-action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: #ffffff;
+  color: #0f172a;
+  font-weight: 800;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.stats-action-chip:hover {
+  border-color: rgba(59, 130, 246, 0.55);
+  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.12);
+  transform: translateY(-1px);
+}
+
+.stats-action-chip:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+}
+
+.stats-action-chip:disabled {
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.stats-action-chip.is-danger {
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ef4444;
+}
+
+.stats-action-chip.is-danger:hover {
+  border-color: rgba(239, 68, 68, 0.75);
+  box-shadow: 0 10px 24px rgba(239, 68, 68, 0.12);
+}
+
+@media (max-width: 560px) {
+  .stats-action-chip-label {
+    display: none; /* モバイルではアイコンだけにして省スペース */
+  }
+  .stats-action-chip {
+    padding: 0 9px;
+  }
+}
+

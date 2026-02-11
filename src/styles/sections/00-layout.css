@@ -1,0 +1,25 @@
+/* -------------------------------
+🌈 全体レイアウト
+--------------------------------*/
+body {
+  margin: 0;
+  font-family: "Noto Sans JP", "Inter", sans-serif;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  color: #333;
+}
+
+:root {
+  --mobile-nav-h: 74px; /* 下部ナビの想定高さ（safe-area は別途加算） */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: 100%;
+}
+

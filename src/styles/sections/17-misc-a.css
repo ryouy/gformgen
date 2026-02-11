@@ -1,0 +1,76 @@
+/* -------------------------------
+🎛️ おしゃれなプルダウン（StatsViewer）
+--------------------------------*/
+.pretty-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 右側の▼（OSデフォルト矢印を消して自前で描画） */
+.pretty-select-wrap::after {
+  content: "";
+  position: absolute;
+  right: 0.78rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 2px solid rgba(100, 116, 139, 0.95);
+  border-bottom: 2px solid rgba(100, 116, 139, 0.95);
+  transform: rotate(45deg);
+  pointer-events: none;
+  margin-top: -2px;
+}
+
+.pretty-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  max-width: 420px;
+  min-width: 280px;
+  padding: 0.55rem 2.2rem 0.55rem 0.85rem; /* 右は▼の分を確保 */
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: #0f172a;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.pretty-select:hover {
+  border-color: rgba(59, 130, 246, 0.55);
+  box-shadow: 0 10px 24px rgba(59, 130, 246, 0.12);
+}
+
+.pretty-select:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.75);
+  box-shadow:
+    0 0 0 4px rgba(59, 130, 246, 0.18),
+    0 14px 30px rgba(15, 23, 42, 0.12);
+}
+
+.pretty-select:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+@media (max-width: 520px) {
+  .pretty-select {
+    min-width: 220px;
+    max-width: 92vw;
+  }
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+

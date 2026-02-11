@@ -1,0 +1,133 @@
+/* -------------------------------
+📘 説明書：章カード（上2列）→ 下に説明
+--------------------------------*/
+.manual-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 10px 0 14px;
+}
+
+.manual-detail {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 250, 252, 1));
+  border-radius: 18px;
+  padding: 16px 16px 14px;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.1);
+}
+
+.manual-card {
+  text-align: left;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(248, 250, 252, 0.98);
+  border-radius: 18px;
+  padding: 14px 14px 12px;
+  font-weight: 950;
+  color: rgba(15, 23, 42, 0.92);
+  cursor: pointer;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.manual-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 18px 40px rgba(37, 99, 235, 0.1);
+}
+
+.manual-card.is-active {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.14), rgba(59, 130, 246, 0.12));
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 20px 46px rgba(37, 99, 235, 0.12);
+}
+
+.manual-card-title {
+  font-weight: 1000;
+  line-height: 1.25;
+}
+
+.manual-card-hint {
+  margin-top: 8px;
+  font-size: 0.86rem;
+  font-weight: 850;
+  color: rgba(51, 65, 85, 0.75);
+}
+
+.manual-bubble--below {
+  margin-top: 10px;
+}
+
+@media (max-width: 860px) {
+  .manual-grid {
+    grid-template-columns: 1fr;
+  }
+  .manual-card {
+    padding: 12px 12px 10px;
+  }
+  .manual-card-hint {
+    display: none; /* スマホは情報量を減らしてスッキリ */
+  }
+}
+
+.sangaku-nav-item {
+  position: relative;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: rgba(248, 250, 252, 0.96);
+  border-radius: 16px;
+  height: 54px;
+  width: 100%;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #0f172a;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.sangaku-nav-item svg {
+  /* アイコンが小さく見えないように視認性を少し上げる */
+  stroke-width: 2.2;
+}
+
+.sangaku-nav-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 14px 32px rgba(37, 99, 235, 0.12);
+}
+
+.sangaku-nav-item.active {
+  background: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%);
+  color: #ffffff;
+  border-color: rgba(37, 99, 235, 0.7);
+  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.18);
+}
+
+.sangaku-nav-item.is-locked {
+  opacity: 0.85;
+}
+
+.sangaku-nav-item[aria-disabled="true"] {
+  /* disabled属性は使わず「促す」ためにクリック可能のまま */
+}
+
+.sangaku-lock-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.86);
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.14);
+  pointer-events: none;
+}
+

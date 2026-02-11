@@ -1,0 +1,36 @@
+/* -------------------------------
+🟣 ボタン類
+--------------------------------*/
+.create-btn,
+.expand-btn,
+.pdf-btn {
+  background: #6ba4ff;
+  color: #fff;
+  border: none;
+  padding: 0.8rem 1.8rem;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  width: fit-content;
+  min-width: 220px;
+  margin: 1rem auto 0;
+  display: block;
+  text-align: center;
+}
+
+.create-btn:hover,
+.expand-btn:hover,
+.pdf-btn:hover {
+  background: #1b72ff;
+  transform: translateY(-2px);
+}
+
+/* PDFボタン専用色 */
+.pdf-btn {
+  background: #8fbbaf;
+}
+.pdf-btn:hover {
+  background: #059669;
+}
+

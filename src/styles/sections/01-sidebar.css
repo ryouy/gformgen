@@ -1,0 +1,108 @@
+/* -------------------------------
+🧭 Sangaku 左サイドバー（FCT）
+--------------------------------*/
+.sangaku-shell {
+  display: flex;
+  min-height: 100dvh;
+  width: 100%;
+}
+
+.sangaku-sidebar {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100dvh; /* mobile browser UI 対応 */
+  width: 96px;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(241, 245, 249, 0.96)
+  );
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.sangaku-brand {
+  /* FCTロゴはフラットに（枠/影なし） */
+  background: transparent;
+  border-radius: 14px;
+  height: 54px;
+  width: 100%;
+  cursor: default;
+  box-shadow: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease;
+}
+
+.sangaku-brand:hover { opacity: 0.92; }
+
+.sangaku-brand-text {
+  font-weight: 1000;
+  letter-spacing: 0.06em;
+  color: #1e3a8a;
+}
+
+.sangaku-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* グループ間 */
+}
+
+.sangaku-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sangaku-sidebar-bottom {
+  margin-top: auto; /* ← ここで確実に下に寄せる（ログイン直後のズレ対策） */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sangaku-nav-item--icononly .sangaku-nav-label {
+  display: none; /* 説明書/設定はアイコンだけ */
+}
+
+.sangaku-nav-item--subtle {
+  /* 目立ちすぎない下段用 */
+  height: 46px;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: none;
+  border-color: rgba(15, 23, 42, 0.1);
+  opacity: 0.72;
+  transition: opacity 0.15s ease, transform 0.15s ease, border-color 0.15s ease,
+    background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sangaku-nav-item--subtle:hover {
+  opacity: 1;
+  transform: none; /* 下段は浮かせない */
+  background: rgba(248, 250, 252, 0.96);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
+.sangaku-nav-item--subtle.active {
+  /* 下段はグラデを使わず、控えめにアクティブ表示 */
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.28);
+  color: rgba(15, 23, 42, 0.95);
+  box-shadow: none;
+}
+
+.sangaku-nav-item--danger:hover {
+  /* ログアウトだけは「操作」と分かるように少しだけ色味を変える */
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(254, 242, 242, 0.9);
+}
+

@@ -1,0 +1,183 @@
+/* -------------------------------
+💬 サイドバー用ツールチップ（ネイティブtitleに加えて視認性UP）
+--------------------------------*/
+.sangaku-nav-item[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #ffffff;
+  font-size: 0.86rem;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease, visibility 0.12s ease;
+  z-index: 10;
+}
+
+.sangaku-nav-item[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-right: 6px solid rgba(15, 23, 42, 0.92);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease, visibility 0.12s ease;
+  z-index: 10;
+}
+
+.sangaku-nav-item[data-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(2px);
+}
+
+.sangaku-nav-item[data-tooltip]:hover::before {
+  opacity: 1;
+  visibility: visible;
+}
+
+.sangaku-nav-label {
+  font-size: 0.76rem;
+  line-height: 1;
+}
+
+.remarks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.remarks-item {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.remarks-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.remarks-company {
+  font-weight: 1000;
+  color: #0f172a;
+}
+
+.remarks-sub {
+  margin-top: 2px;
+  color: rgba(51, 65, 85, 0.85);
+  font-weight: 800;
+  font-size: 0.86rem;
+}
+
+.remarks-time {
+  color: rgba(51, 65, 85, 0.8);
+  font-weight: 900;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.remarks-text {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  line-height: 1.65;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.sangaku-main {
+  flex: 1;
+  min-width: 0;
+  /* 白いカード（.content）を縦いっぱいに広げられるようにする */
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+@media (max-width: 720px) {
+  .sangaku-shell {
+    flex-direction: column;
+  }
+
+  /* モバイルは左サイドバーではなく下部ナビにする */
+  .sangaku-sidebar {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: auto;
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-right: none;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(12px);
+    z-index: 1200;
+  }
+
+  .sangaku-brand {
+    display: none;
+  }
+
+  .sangaku-nav {
+    flex: 1;
+  }
+  .sangaku-nav-group {
+    flex-direction: row;
+    justify-content: space-around;
+    gap: 8px;
+  }
+  .sangaku-sidebar-bottom {
+    margin-top: 0;
+    flex-direction: row;
+    gap: 8px;
+  }
+
+  .sangaku-nav-item {
+    width: 56px;
+    height: 52px;
+    border-radius: 14px;
+  }
+  .sangaku-nav-item:hover {
+    transform: none; /* 下部ナビは浮かせない */
+  }
+
+  .sangaku-main {
+    /* 下部ナビに隠れないように */
+    padding-bottom: calc(var(--mobile-nav-h) + env(safe-area-inset-bottom));
+  }
+
+  /* スマホはツールチップを出さない（指ホバーが無い） */
+  .sangaku-nav-item[data-tooltip]::after,
+  .sangaku-nav-item[data-tooltip]::before {
+    display: none;
+  }
+  .sangaku-nav-label {
+    display: none; /* スマホはアイコン中心 */
+  }
+}
+

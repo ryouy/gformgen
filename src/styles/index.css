@@ -1,0 +1,26 @@
+/* Central style entrypoint.
+   The files in ./sections/ are a mechanical split of the previous monolithic
+   src/App.css. Import order is critical for preserving the cascade. */
+
+@import "./sections/00-layout.css";
+@import "./sections/01-sidebar.css";
+@import "./sections/02-manual-cards-nav.css";
+@import "./sections/03-tooltips-remarks-mobile-nav.css";
+@import "./sections/04-header.css";
+@import "./sections/05-content.css";
+@import "./sections/06-auth.css";
+@import "./sections/07-manual-legacy.css";
+@import "./sections/08-form-grid.css";
+@import "./sections/09-form-bottom-bar.css";
+@import "./sections/10-form-centered.css";
+@import "./sections/11-buttons.css";
+@import "./sections/12-qr.css";
+@import "./sections/13-tables-and-stats.css";
+@import "./sections/14-tooltip.css";
+@import "./sections/15-mini-tabs.css";
+@import "./sections/16-select-and-dropdown.css";
+@import "./sections/17-misc-a.css";
+@import "./sections/18-misc-b.css";
+@import "./sections/19-misc-c.css";
+
+

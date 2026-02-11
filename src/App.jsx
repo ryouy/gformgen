@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import AppMain from "./SangakuComponents/AppMain";
+import AppMain from "./layout/AppMain";
 import "./App.css";
 import { authUrl } from "./lib/apiBase";
 
