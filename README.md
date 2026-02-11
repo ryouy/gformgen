@@ -6,7 +6,7 @@ A small admin tool to **programmatically create, rediscover, and aggregate Googl
 * **Google Drive / Forms as the single source of truth**
 * **Stateless by design**
 
-###　(Live demo)[https://gfca-aizu.web.app]
+###　[Live demo](https://gfca-aizu.web.app)
 ---
 
 
