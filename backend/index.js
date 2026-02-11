@@ -48,11 +48,12 @@ function readLegacyAwareSecret(gfKey, legacyKey, secretParam) {
   return process.env[legacyKey] || "";
 }
 
-// NOTE: single-user mode
+// NOTE:
 // Prefer cookie-based persistence so serverless instances don't lose login state.
-// Fallback: in-memory (backend restart / cold start => re-login required).
-let savedTokens = null;
+// Fallback: in-memory only when GF_SESSION_PASSWORD is missing.
+let savedTokens = null; // fallback only
 let warnedMissingSessionPassword = false;
+let savedUser = null; // fallback only
 
 const app = express();
 // Ensure req.protocol respects x-forwarded-proto (Firebase/Vercel/Cloud Run)
@@ -89,6 +90,9 @@ const APP_PROP_APP_KEY = "gformgen_app";
 const APP_PROP_STATUS_KEY = "gformgen_status";
 const APP_PROP_APP_VALUE = "sangaku";
 const APP_PROP_STATUS_CLOSED = "closed";
+const APP_PROP_OWNER_SUB_KEY = "gformgen_owner_sub";
+const APP_PROP_OWNER_EMAIL_KEY = "gformgen_owner_email";
+const APP_PROP_OWNER_NAME_KEY = "gformgen_owner_name";
 
 /* =========================
    Google OAuth 設定
@@ -132,11 +136,12 @@ function makeOAuthClient(redirectUri) {
   );
 }
 
-// Per-request OAuth client (avoid cross-user races in a multi-user server)
-function makeAuthedOAuthClientOrNull(_req) {
-  if (!savedTokens?.access_token && !savedTokens?.refresh_token) return null;
+// Per-request OAuth client (cookie-based; avoids cross-user races)
+function makeAuthedOAuthClientOrNull(req) {
+  const tokens = getTokens(req);
+  if (!tokens?.access_token && !tokens?.refresh_token) return null;
   const client = makeOAuthClient(FALLBACK_OAUTH_REDIRECT_URI);
-  client.setCredentials(savedTokens);
+  client.setCredentials(tokens);
   return client;
 }
 
@@ -208,6 +213,149 @@ function decryptTokens(payload, secret) {
   return obj && typeof obj === "object" ? obj : null;
 }
 
+function setUserCookie(req, res, user) {
+  const secret = getSessionSecret();
+  if (!secret) return false;
+  const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
+    .split(",")[0]
+    .trim();
+  const secure = proto === "https";
+  const value = encryptTokens(user, secret);
+  const attrs = [
+    `gformgen_user=${encodeURIComponent(value)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    secure ? "Secure" : "",
+    `Max-Age=${60 * 60 * 24 * 30}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
+  res.setHeader("Set-Cookie", attrs);
+  return true;
+}
+
+function clearUserCookie(req, res) {
+  const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
+    .split(",")[0]
+    .trim();
+  const secure = proto === "https";
+  const attrs = [
+    "gformgen_user=",
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    secure ? "Secure" : "",
+    "Max-Age=0",
+  ]
+    .filter(Boolean)
+    .join("; ");
+  res.setHeader("Set-Cookie", attrs);
+}
+
+function getSavedUser(req) {
+  const secret = getSessionSecret();
+  if (secret) {
+    try {
+      const cookies = parseCookies(req);
+      const enc = cookies?.gformgen_user;
+      if (enc) {
+        const user = decryptTokens(enc, secret);
+        if (user && typeof user === "object") {
+          return user;
+        }
+      }
+    } catch {
+      // ignore and fallback
+    }
+    return null;
+  }
+  return savedUser;
+}
+
+async function fetchGoogleUserInfo(authClient) {
+  const oauth2 = google.oauth2({ version: "v2", auth: authClient });
+  const res = await oauth2.userinfo.get();
+  const data = res?.data || {};
+  const sub = String(data?.id || "").trim();
+  const email = String(data?.email || "").trim();
+  const name = String(data?.name || "").trim();
+  return {
+    sub: sub || "",
+    email: email || "",
+    name: name || "",
+  };
+}
+
+async function getAuthUserOrNull(req, res) {
+  const cached = getSavedUser(req);
+  if (cached?.sub) return cached;
+  const authClient = makeAuthedOAuthClientOrNull(req);
+  if (!authClient) return null;
+  try {
+    const user = await fetchGoogleUserInfo(authClient);
+    if (user?.sub) {
+      // fallback only (when no cookie secret)
+      if (!getSessionSecret()) savedUser = user;
+      try {
+        setUserCookie(req, res, user);
+      } catch {
+        // ignore
+      }
+      return user;
+    }
+  } catch {
+    // ignore
+  }
+  return cached || null;
+}
+
+async function enforceOwnerAccess({ req, res, drive, formId, requireApp = true }) {
+  const authUser = await getAuthUserOrNull(req, res);
+  if (!authUser?.sub) {
+    return { ok: false, status: 401, error: "Not logged in" };
+  }
+
+  const driveFile = await drive.files.get({
+    fileId: formId,
+    fields: "id,name,ownedByMe,appProperties",
+  });
+  const file = driveFile?.data || {};
+  const props = file?.appProperties || {};
+  const appKey = String(props?.[APP_PROP_APP_KEY] || "");
+  if (requireApp && appKey && appKey !== APP_PROP_APP_VALUE) {
+    return { ok: false, status: 403, error: "Forbidden" };
+  }
+
+  const ownerSub = String(props?.[APP_PROP_OWNER_SUB_KEY] || "").trim();
+  const me = String(authUser.sub).trim();
+  if (ownerSub) {
+    if (ownerSub !== me) return { ok: false, status: 403, error: "Forbidden" };
+    return { ok: true, authUser, file };
+  }
+
+  // Legacy/backfill: if the Drive file is owned by current user, allow and backfill owner props.
+  if (file?.ownedByMe === true) {
+    const nextProps = mergeAppProperties(
+      props,
+      buildOwnerAppPropertiesPatch(props, authUser, true)
+    );
+    // best-effort backfill
+    try {
+      await drive.files.update({
+        fileId: formId,
+        requestBody: { appProperties: nextProps },
+      });
+      file.appProperties = nextProps;
+    } catch {
+      // ignore
+    }
+    return { ok: true, authUser, file };
+  }
+
+  return { ok: false, status: 403, error: "Forbidden" };
+}
+
 function setAuthCookie(req, res, tokens) {
   const secret = getSessionSecret();
   if (!secret) {
@@ -259,8 +407,8 @@ function clearAuthCookie(req, res) {
 }
 
 function getTokens(req) {
-  // Prefer cookie (works across serverless instances), fallback to in-memory.
   const secret = getSessionSecret();
+  // Prefer cookie (works across serverless instances). If secret is missing, fallback to in-memory.
   if (secret) {
     try {
       const cookies = parseCookies(req);
@@ -268,31 +416,40 @@ function getTokens(req) {
       if (enc) {
         const tokens = decryptTokens(enc, secret);
         if (tokens?.access_token || tokens?.refresh_token) {
-          savedTokens = tokens; // cache in-memory for this instance
           return tokens;
         }
       }
     } catch {
       // ignore and fallback
     }
+    return null;
   }
   return savedTokens;
 }
 
 async function setTokens(req, res, tokens) {
-  savedTokens = tokens;
   // Best-effort cookie persistence (prevents "login works only after refresh" behind LB)
   try {
-    setAuthCookie(req, res, tokens);
+    const ok = setAuthCookie(req, res, tokens);
+    if (!ok) {
+      // fallback to in-memory only if cookie secret missing
+      savedTokens = tokens;
+    }
   } catch {
-    // ignore
+    savedTokens = tokens;
   }
 }
 
 async function clearTokens(req, res) {
   savedTokens = null;
+  savedUser = null;
   try {
     clearAuthCookie(req, res);
+  } catch {
+    // ignore
+  }
+  try {
+    clearUserCookie(req, res);
   } catch {
     // ignore
   }
@@ -318,6 +475,9 @@ function handleAuthGoogle(req, res) {
     access_type: "offline",
     prompt: "consent",
     scope: [
+      "openid",
+      "email",
+      "profile",
       "https://www.googleapis.com/auth/forms.body",
       "https://www.googleapis.com/auth/forms.responses.readonly",
       "https://www.googleapis.com/auth/drive.file",
@@ -345,6 +505,19 @@ async function handleAuthCallback(req, res) {
     const oauthForAuth = makeOAuthClient(redirectUri);
     const { tokens } = await oauthForAuth.getToken(req.query.code);
     await setTokens(req, res, tokens);
+
+    // Fetch user profile (best-effort) and persist to cookie for later owner checks.
+    try {
+      const client = makeOAuthClient(redirectUri);
+      client.setCredentials(tokens);
+      const user = await fetchGoogleUserInfo(client);
+      if (user?.sub) {
+        savedUser = user; // fallback only
+        setUserCookie(req, res, user);
+      }
+    } catch {
+      // ignore
+    }
 
     void logEvent({
       type: "oauth_success",
@@ -418,12 +591,20 @@ app.get("/api/auth/google/callback", handleAuthCallback);
 function handleAuthMe(req, res) {
   const tokens = getTokens(req);
   const loggedIn = Boolean(tokens?.access_token) || Boolean(tokens?.refresh_token);
+  const user = getSavedUser(req);
   return res.json({
     loggedIn,
     // for debugging/UX only (do not expose token itself)
     hasRefreshToken: Boolean(tokens?.refresh_token),
     hasAccessToken: Boolean(tokens?.access_token),
     expiryDate: tokens?.expiry_date ?? null,
+    user: user
+      ? {
+          sub: String(user?.sub || ""),
+          email: String(user?.email || ""),
+          name: String(user?.name || ""),
+        }
+      : null,
   });
 }
 
@@ -568,6 +749,30 @@ function mergeAppProperties(current, patch) {
   };
 }
 
+function buildOwnerAppPropertiesPatch(currentProps, authUser, ownedByMe) {
+  if (!ownedByMe) return {};
+  const cur = currentProps || {};
+  const u = authUser || {};
+  /** @type {Record<string, string>} */
+  const patch = {};
+  if (!String(cur?.[APP_PROP_OWNER_SUB_KEY] || "").trim() && String(u?.sub || "").trim()) {
+    patch[APP_PROP_OWNER_SUB_KEY] = String(u.sub).trim();
+  }
+  if (
+    !String(cur?.[APP_PROP_OWNER_EMAIL_KEY] || "").trim() &&
+    String(u?.email || "").trim()
+  ) {
+    patch[APP_PROP_OWNER_EMAIL_KEY] = String(u.email).trim();
+  }
+  if (
+    !String(cur?.[APP_PROP_OWNER_NAME_KEY] || "").trim() &&
+    String(u?.name || "").trim()
+  ) {
+    patch[APP_PROP_OWNER_NAME_KEY] = String(u.name).trim();
+  }
+  return patch;
+}
+
 function stripTagsFromTitle(title) {
   return String(title || "")
     .replace(`${FORM_NAME_TAG} `, "")
@@ -577,9 +782,10 @@ function stripTagsFromTitle(title) {
     .trim();
 }
 
-async function migrateFileToAppProperties({ forms, drive, file }) {
+async function migrateFileToAppProperties({ forms, drive, file, authUser }) {
   const formId = file?.id;
   if (!formId) return { migrated: false };
+  const ownedByMe = file?.ownedByMe === true;
 
   const currentName = String(file?.name || "");
   const cleanedName = stripTagsFromTitle(currentName) || currentName;
@@ -590,15 +796,25 @@ async function migrateFileToAppProperties({ forms, drive, file }) {
   const inferredStatus =
     acceptingFromTitle === false ? APP_PROP_STATUS_CLOSED : undefined;
 
-  const nextProps = mergeAppProperties(currentProps, {
-    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
-    ...(inferredStatus ? { [APP_PROP_STATUS_KEY]: inferredStatus } : {}),
-  });
+  const nextProps = mergeAppProperties(
+    currentProps,
+    mergeAppProperties(
+      {
+        [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+        ...(inferredStatus ? { [APP_PROP_STATUS_KEY]: inferredStatus } : {}),
+      },
+      buildOwnerAppPropertiesPatch(currentProps, authUser, ownedByMe)
+    )
+  );
 
   const needsDriveUpdate =
     String(currentProps?.[APP_PROP_APP_KEY] || "") !== APP_PROP_APP_VALUE ||
     currentName.includes(FORM_NAME_TAG) ||
-    currentName.includes(FORM_CLOSED_TAG);
+    currentName.includes(FORM_CLOSED_TAG) ||
+    // add owner props when missing (only when ownedByMe)
+    (ownedByMe &&
+      String(currentProps?.[APP_PROP_OWNER_SUB_KEY] || "").trim() !==
+        String(nextProps?.[APP_PROP_OWNER_SUB_KEY] || "").trim());
 
   let cleanedTitle = "";
   let needsFormsUpdate = false;
@@ -668,6 +884,7 @@ app.post("/api/forms/create", async (req, res) => {
 
     const authClient = makeAuthedOAuthClientOrNull(req);
     if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const authUser = await getAuthUserOrNull(req, res);
 
     const {
       title,
@@ -864,6 +1081,13 @@ ${formTitle}
         appProperties: {
           [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
           // open/closed は status で管理（未設定=open扱い）
+          ...(authUser?.sub
+            ? {
+                [APP_PROP_OWNER_SUB_KEY]: String(authUser.sub),
+                ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
+                ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
+              }
+            : {}),
         },
       },
     });
@@ -914,6 +1138,9 @@ app.get("/api/forms/:formId/responses/raw", async (req, res) => {
 
     const authClient = makeAuthedOAuthClientOrNull(req);
     if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const drive = google.drive({ version: "v3", auth: authClient });
+    const access = await enforceOwnerAccess({ req, res, drive, formId });
+    if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
     const forms = google.forms({ version: "v1", auth: authClient });
 
     const { responses, nextPageToken } = await listAllFormResponses(forms, formId);
@@ -967,6 +1194,9 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
 
     const authClient = makeAuthedOAuthClientOrNull(req);
     if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const drive = google.drive({ version: "v3", auth: authClient });
+    const access = await enforceOwnerAccess({ req, res, drive, formId });
+    if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
     const forms = google.forms({ version: "v1", auth: authClient });
 
     const questionIdToTitle = await buildQuestionIdToTitleMap(forms, formId);
@@ -1097,6 +1327,9 @@ app.get("/api/forms/:formId/summary", async (req, res) => {
     void logEvent({ type: "forms_summary_requested", formId });
     const authClient = makeAuthedOAuthClientOrNull(req);
     if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const drive = google.drive({ version: "v3", auth: authClient });
+    const access = await enforceOwnerAccess({ req, res, drive, formId });
+    if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
     const forms = google.forms({ version: "v1", auth: authClient });
 
     const questionIdToTitle = await buildQuestionIdToTitleMap(forms, formId);
@@ -1166,6 +1399,7 @@ app.get("/api/forms/list", async (req, res) => {
 
     const authClient = makeAuthedOAuthClientOrNull(req);
     if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const authUser = await getAuthUserOrNull(req, res);
     const formsApi = google.forms({ version: "v1", auth: authClient });
     const drive = google.drive({ version: "v3", auth: authClient });
 
@@ -1184,7 +1418,7 @@ app.get("/api/forms/list", async (req, res) => {
       q: q1,
       orderBy: "createdTime desc",
       pageSize: 100,
-      fields: "files(id,name,createdTime,modifiedTime,appProperties)",
+      fields: "files(id,name,createdTime,modifiedTime,appProperties,ownedByMe)",
     });
 
     const files1 = result1?.data?.files || [];
@@ -1195,7 +1429,7 @@ app.get("/api/forms/list", async (req, res) => {
       q: q2,
       orderBy: "createdTime desc",
       pageSize: 100,
-      fields: "files(id,name,createdTime,modifiedTime,appProperties)",
+      fields: "files(id,name,createdTime,modifiedTime,appProperties,ownedByMe)",
     });
     const files2 = result2?.data?.files || [];
 
@@ -1213,18 +1447,37 @@ app.get("/api/forms/list", async (req, res) => {
       const props = f?.appProperties || {};
       const hasApp = String(props?.[APP_PROP_APP_KEY] || "") === APP_PROP_APP_VALUE;
       const hasTag = name.includes(FORM_NAME_TAG) || name.includes(FORM_CLOSED_TAG);
-      return !hasApp || hasTag;
+      // also backfill owner props for owned-by-me forms
+      const hasOwner = Boolean(String(props?.[APP_PROP_OWNER_SUB_KEY] || "").trim());
+      return !hasApp || hasTag || ((f?.ownedByMe === true) && !hasOwner);
     });
 
     for (let i = 0; i < migrateTargets.length; i += 5) {
       const chunk = migrateTargets.slice(i, i + 5);
       // eslint-disable-next-line no-await-in-loop
       await Promise.allSettled(
-        chunk.map((f) => migrateFileToAppProperties({ forms: formsApi, drive, file: f }))
+        chunk.map((f) =>
+          migrateFileToAppProperties({
+            forms: formsApi,
+            drive,
+            file: f,
+            authUser,
+          })
+        )
       );
     }
 
-    const forms = files.map((f) => {
+    const forms = files
+      .filter((f) => {
+        // If we know current user, only show forms owned by that user.
+        if (!authUser?.sub) return true;
+        const props = f?.appProperties || {};
+        const ownerSub = String(props?.[APP_PROP_OWNER_SUB_KEY] || "").trim();
+        if (ownerSub) return ownerSub === String(authUser.sub).trim();
+        // Legacy: allow old forms owned by current account (and we backfill owner props above)
+        return f?.ownedByMe === true;
+      })
+      .map((f) => {
       const cleanedTitle = stripTagsFromTitle(f.name) || f.name;
       const byProps = parseAcceptingResponsesFromAppProperties(f.appProperties);
       const byTitle = parseAcceptingResponsesFromTitle(f.name);
@@ -1272,13 +1525,15 @@ app.get("/api/forms/:formId/info", async (req, res) => {
     if (!authClient) return res.status(401).json({ error: "Not logged in" });
     const forms = google.forms({ version: "v1", auth: authClient });
     const drive = google.drive({ version: "v3", auth: authClient });
+    const access = await enforceOwnerAccess({ req, res, drive, formId, requireApp: false });
+    if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
 
     const result = await forms.forms.get({ formId });
     const info = result?.data?.info || {};
     const responderUri = result?.data?.responderUri || "";
     const driveFile = await drive.files.get({
       fileId: formId,
-      fields: "id,name,appProperties",
+      fields: "id,name,appProperties,ownedByMe",
     });
     const driveName = driveFile?.data?.name || "";
     const appProps = driveFile?.data?.appProperties || {};
@@ -1378,6 +1633,8 @@ app.post("/api/forms/:formId/close", async (req, res) => {
 
     const forms = google.forms({ version: "v1", auth: authClient });
     const drive = google.drive({ version: "v3", auth: authClient });
+    const access = await enforceOwnerAccess({ req, res, drive, formId });
+    if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
 
     // NOTE: Forms APIでは回答受付停止の切り替えが提供されていないため、
     // Drive appProperties で「締切」状態を表現する（タイトルにタグは出さない）
@@ -1463,6 +1720,8 @@ app.post("/api/forms/:formId/trash", async (req, res) => {
     const authClient = makeAuthedOAuthClientOrNull(req);
     if (!authClient) return res.status(401).json({ error: "Not logged in" });
     const drive = google.drive({ version: "v3", auth: authClient });
+    const access = await enforceOwnerAccess({ req, res, drive, formId });
+    if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
 
     await drive.files.update({
       fileId: formId,

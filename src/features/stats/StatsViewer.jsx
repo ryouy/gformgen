@@ -306,8 +306,12 @@ export default function StatsViewer({ initialFormId }) {
   const selectedForm = forms.find((f) => f.formId === selectedFormId) || null;
 
   const handleDownloadCsv = useCallback(() => {
-    downloadResponsesCsv({ rows, selectedFormId });
-  }, [rows, selectedFormId]);
+    downloadResponsesCsv({
+      rows,
+      selectedFormId,
+      title: normalizeTitle(selectedForm?.title),
+    });
+  }, [rows, selectedFormId, normalizeTitle, selectedForm]);
 
   const handleDownloadPdf = useCallback(() => {
     downloadAttendancePdf({ rows, meetingTitle, fontData });

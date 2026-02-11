@@ -5,7 +5,25 @@ function escapeCsvCell(v) {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-export function downloadResponsesCsv({ rows, selectedFormId }) {
+function toSafeFilenameBase(input, { fallback } = {}) {
+  const s = String(input ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Windows/mac friendly: remove reserved characters and control chars.
+  const cleaned = s
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    // Avoid trailing dots/spaces which can be problematic on Windows.
+    .replace(/[.\s]+$/g, "")
+    .trim();
+
+  return cleaned || String(fallback || "responses");
+}
+
+export function downloadResponsesCsv({ rows, selectedFormId, title }) {
   const header = ["company", "role", "name", "attendance", "count", "remarks", "submittedAt"];
   const lines = [
     header.join(","),
@@ -30,7 +48,9 @@ export function downloadResponsesCsv({ rows, selectedFormId }) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `responses_${selectedFormId || "unknown"}.csv`;
+  const fallback = `responses_${selectedFormId || "unknown"}`;
+  const base = toSafeFilenameBase(title, { fallback });
+  a.download = `${base}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
