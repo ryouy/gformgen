@@ -21,7 +21,7 @@ export default function App() {
     } catch {
       // ignore
     }
-    return { accent: "#3b82f6", scope: "sidebar" };
+    return { accent: "#6b7280", scope: "sidebar" };
   });
 
   const syncLoginStateFromServer = async ({ keepCurrentOnError = false } = {}) => {
@@ -99,8 +99,8 @@ export default function App() {
     let cancelled = false;
     const run = async () => {
       if (!isLoggedIn) {
-        setAppTheme({ accent: "#3b82f6", scope: "sidebar" });
-        applyAppThemeToDom({ accent: "#3b82f6", scope: "sidebar" });
+        setAppTheme({ accent: "#6b7280", scope: "sidebar" });
+        applyAppThemeToDom({ accent: "#6b7280", scope: "sidebar" });
         themeAppliedRef.current = false;
         return;
       }
@@ -274,12 +274,12 @@ export default function App() {
   return (
     <ThemeProvider theme={muiTheme}>
       <CssBaseline />
-      <AppMain
-        theme="sangaku"
-        isLoggedIn={isLoggedIn}
-        onLogin={handleLogin}
-        onLogout={handleLogout}
-      />
+    <AppMain
+      theme="sangaku"
+      isLoggedIn={isLoggedIn}
+      onLogin={handleLogin}
+      onLogout={handleLogout}
+    />
     </ThemeProvider>
   );
 }

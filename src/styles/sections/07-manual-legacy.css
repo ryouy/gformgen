@@ -3,7 +3,7 @@
 --------------------------------*/
 .manual-lead {
   margin: 0 0 12px;
-  color: rgba(15, 23, 42, 0.78);
+  color: color-mix(in srgb, var(--app-text) 65%, transparent);
   font-weight: 800;
 }
 
@@ -35,7 +35,7 @@
   border-radius: 14px;
   padding: 10px 12px;
   font-weight: 950;
-  color: rgba(15, 23, 42, 0.9);
+  color: color-mix(in srgb, var(--app-text) 90%, transparent);
   cursor: pointer;
   /* multi-column 用（1項目が途中で折れない & 1列幅いっぱい） */
   display: inline-block;
@@ -48,14 +48,18 @@
 
 .manual-item:hover {
   transform: translateY(-1px);
-  border-color: rgba(37, 99, 235, 0.45);
-  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.1);
+  border-color: rgba(var(--accent-rgb), 0.45);
+  box-shadow: 0 14px 28px rgba(var(--accent-rgb), 0.1);
 }
 
 .manual-item.is-active {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(59, 130, 246, 0.1));
-  border-color: rgba(37, 99, 235, 0.55);
-  box-shadow: 0 16px 34px rgba(37, 99, 235, 0.12);
+  background: linear-gradient(
+    135deg,
+    rgba(var(--accent-rgb), 0.14),
+    rgba(var(--accent-rgb), 0.08)
+  );
+  border-color: rgba(var(--accent-rgb), 0.55);
+  box-shadow: 0 16px 34px rgba(var(--accent-rgb), 0.12);
 }
 
 .manual-bubble {
@@ -84,7 +88,7 @@
 
 .manual-bubble-title {
   font-weight: 1000;
-  color: #0f172a;
+  color: var(--app-text);
   margin-bottom: 10px;
 }
 

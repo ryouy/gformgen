@@ -23,7 +23,8 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
     setAuthPromptFor(tab);
   };
 
-  const needsAuth = !isLoggedIn && (activeTab === "stats" || activeTab === "form");
+  const needsAuth =
+    !isLoggedIn && (activeTab === "stats" || activeTab === "form" || activeTab === "settings");
   const isLocked = !isLoggedIn;
 
   return (
@@ -44,7 +45,7 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
               title={isLocked ? "集計（ログインが必要）" : "集計結果"}
               aria-label="集計結果"
               aria-disabled={isLocked}
-              data-tooltip={isLocked ? "ログインが必要です" : undefined}
+              data-tooltip={isLocked ? "ログインが必要です" : "回答状況を確認"}
             >
               {isLocked && (
                 <span className="sangaku-lock-badge" aria-hidden="true">
@@ -63,7 +64,7 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
               title={isLocked ? "作成（ログインが必要）" : "フォーム作成"}
               aria-label="フォーム作成"
               aria-disabled={isLocked}
-              data-tooltip={isLocked ? "ログインが必要です" : undefined}
+              data-tooltip={isLocked ? "ログインが必要です" : "フォームを作成"}
             >
               {isLocked && (
                 <span className="sangaku-lock-badge" aria-hidden="true">
@@ -105,11 +106,17 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
             type="button"
             className={`sangaku-nav-item sangaku-nav-item--subtle sangaku-nav-item--icononly ${
               activeTab === "settings" ? "active" : ""
-            }`}
-            onClick={() => setActiveTab("settings")}
+            } ${isLocked ? "is-locked" : ""}`}
+            onClick={() => (isLoggedIn ? setActiveTab("settings") : requestAuth("settings"))}
             aria-label="設定"
-            data-tooltip="設定"
+            aria-disabled={isLocked}
+            data-tooltip={isLocked ? "ログインが必要です" : "設定"}
           >
+            {isLocked && (
+              <span className="sangaku-lock-badge" aria-hidden="true">
+                <Lock size={14} />
+              </span>
+            )}
             <Settings size={22} />
             <span className="sangaku-nav-label">設定</span>
           </button>

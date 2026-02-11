@@ -320,7 +320,7 @@ export default function StatsViewer({ initialFormId }) {
   const handleCloseForm = useCallback(async () => {
     if (!selectedFormId) return;
     if (
-      !window.confirm("このフォームを締切済みにします（アプリ上の締切扱い）。よろしいですか？")
+      !window.confirm("このフォームを締切済みにします。よろしいですか？")
     )
       return;
     try {

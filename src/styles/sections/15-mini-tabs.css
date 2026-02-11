@@ -3,7 +3,7 @@
 --------------------------------*/
 .mini-tabs {
   display: inline-flex;
-  background: rgba(245, 245, 245, 0.7);
+  background: color-mix(in srgb, var(--panel-bg) 75%, transparent);
   padding: 4px;
   border-radius: 9999px;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -17,12 +17,13 @@
   cursor: pointer;
   font-weight: 800;
   font-size: 0.85rem;
-  color: #334155;
+  color: color-mix(in srgb, var(--app-text) 75%, transparent);
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
 .mini-tab.active {
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
-  color: #1e3a8a;
+  background: rgba(var(--accent-rgb), 0.12);
+  box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.14);
+  color: var(--app-text);
 }
 

@@ -58,14 +58,15 @@ button {
   transition: border-color 0.25s;
 }
 button:hover {
-  border-color: #646cff;
+  border-color: rgba(var(--accent-rgb), 0.65);
 }
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: 3px solid rgba(var(--accent-rgb), 0.45);
+  outline-offset: 2px;
 }
 
-/* ---- ダークモード／ライトモード対応 ---- */
+/* ---- Vite template defaults (aligned to app theme) ---- */
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;

@@ -26,31 +26,24 @@ function adjust(hex, amount) {
 export function applyAppThemeToDom(theme) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  const accent = String(theme?.accent || "#3b82f6").trim().toLowerCase();
-  const scopeRaw = String(theme?.scope || "sidebar").trim();
-  // We no longer expose "accent-only" in UI; treat unknown/legacy values as "sidebar".
-  const scope = scopeRaw === "dark" || scopeRaw === "sidebar" ? scopeRaw : "sidebar";
-  const rgb = hexToRgb(accent) || hexToRgb("#3b82f6");
+  const accent = String(theme?.accent || "#6b7280").trim().toLowerCase();
+  const scope = "sidebar";
+  const rgb = hexToRgb(accent) || hexToRgb("#6b7280");
   const accent2 = adjust(accent, -18);
 
   root.style.setProperty("--accent", accent);
   root.style.setProperty("--accent2", accent2);
   if (rgb) root.style.setProperty("--accent-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
 
-  // Sidebar background can be overridden in "sidebar" mode (but not in "accent only").
-  if (scope === "sidebar" || scope === "dark") {
-    if (rgb) {
-      root.style.setProperty(
-        "--sidebar-bg",
-        `linear-gradient(180deg, rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.10), rgba(241, 245, 249, 0.96))`
-      );
-    }
-  } else {
-    root.style.removeProperty("--sidebar-bg");
+  // Sidebar is always themed.
+  if (rgb) {
+    root.style.setProperty(
+      "--sidebar-bg",
+      `linear-gradient(180deg, rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.10), rgba(241, 245, 249, 0.96))`
+    );
   }
-
-  if (scope === "dark") root.dataset.theme = "dark";
-  else delete root.dataset.theme;
+  // Dark mode removed.
+  delete root.dataset.theme;
 
   // Notify app (e.g. to update MUI ThemeProvider) without tight coupling.
   try {

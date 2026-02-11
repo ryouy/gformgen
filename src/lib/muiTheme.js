@@ -1,11 +1,11 @@
 import { createTheme } from "@mui/material/styles";
 
-export function buildMuiTheme({ accent = "#3b82f6", scope = "sidebar" } = {}) {
-  const mode = scope === "dark" ? "dark" : "light";
+export function buildMuiTheme({ accent = "#6b7280", scope = "sidebar" } = {}) {
+  const mode = "light"; // dark mode removed
   return createTheme({
     palette: {
       mode,
-      primary: { main: String(accent || "#3b82f6") },
+      primary: { main: String(accent || "#6b7280") },
     },
     shape: { borderRadius: 14 },
     components: {

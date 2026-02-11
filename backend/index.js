@@ -93,6 +93,9 @@ const APP_PROP_STATUS_CLOSED = "closed";
 const APP_PROP_OWNER_SUB_KEY = "gformgen_owner_sub";
 const APP_PROP_OWNER_EMAIL_KEY = "gformgen_owner_email";
 const APP_PROP_OWNER_NAME_KEY = "gformgen_owner_name";
+const CLOSED_TITLE_SUFFIX = "（締め切られています）";
+const CLOSED_NOTICE_TITLE = "このフォームは締め切られています。";
+const CLOSED_NOTICE_DESCRIPTION = "回答の受付は終了しました。";
 
 // User settings stored on Drive as a small metadata-only file (appProperties).
 // This works with the existing minimal scope: `drive.file` (only app-created files are accessible).
@@ -107,12 +110,11 @@ const APP_PROP_DEFAULT_WEEKS_KEY = "gformgen_default_weeks";
 const APP_PROP_DEFAULT_HOUR_KEY = "gformgen_default_hour";
 const APP_PROP_DEFAULT_MINUTE_KEY = "gformgen_default_minute";
 const APP_PROP_THEME_ACCENT_KEY = "gformgen_theme_accent";
-const APP_PROP_THEME_SCOPE_KEY = "gformgen_theme_scope"; // "accent" | "sidebar" | "dark"
+const APP_PROP_THEME_SCOPE_KEY = "gformgen_theme_scope"; // kept for backward compatibility; always "sidebar"
 const APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY = "gformgen_default_participant_name_count";
 
 const THEME_SCOPE_ACCENT = "accent";
 const THEME_SCOPE_SIDEBAR = "sidebar";
-const THEME_SCOPE_DARK = "dark";
 
 function normalizeHexColor(input) {
   const s = String(input || "").trim();
@@ -146,13 +148,8 @@ function getDefaultScheduleFromProps(appProperties) {
 
 function getThemeFromProps(appProperties) {
   const props = appProperties || {};
-  const accent = normalizeHexColor(props?.[APP_PROP_THEME_ACCENT_KEY]) || "#3b82f6";
-  const scopeRaw = String(props?.[APP_PROP_THEME_SCOPE_KEY] || "").trim();
-  const scope =
-    scopeRaw === THEME_SCOPE_SIDEBAR || scopeRaw === THEME_SCOPE_DARK
-      ? scopeRaw
-      : THEME_SCOPE_SIDEBAR; // default: sidebar
-  return { accent, scope };
+  const accent = normalizeHexColor(props?.[APP_PROP_THEME_ACCENT_KEY]) || "#6b7280";
+  return { accent, scope: THEME_SCOPE_SIDEBAR };
 }
 
 function getFormDefaultsFromProps(appProperties) {
@@ -983,11 +980,7 @@ app.post("/api/user-settings/theme", async (req, res) => {
     if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
     const accent = normalizeHexColor(req?.body?.accent) || "";
-    const scopeRaw = String(req?.body?.scope || "").trim();
-    const scope =
-      scopeRaw === THEME_SCOPE_SIDEBAR || scopeRaw === THEME_SCOPE_DARK
-        ? scopeRaw
-        : THEME_SCOPE_ACCENT;
+    const scope = THEME_SCOPE_SIDEBAR;
     if (!accent) return res.status(400).json({ error: "Invalid accent color" });
 
     const drive = google.drive({ version: "v3", auth: authClient });
@@ -1253,6 +1246,13 @@ function stripTagsFromTitle(title) {
     .trim();
 }
 
+function ensureClosedSuffix(title) {
+  const t = String(title || "").trim();
+  if (!t) return CLOSED_TITLE_SUFFIX;
+  if (t.includes(CLOSED_TITLE_SUFFIX)) return t;
+  return `${t}${CLOSED_TITLE_SUFFIX}`;
+}
+
 async function migrateFileToAppProperties({ forms, drive, file, authUser }) {
   const formId = file?.id;
   if (!formId) return { migrated: false };
@@ -1271,8 +1271,8 @@ async function migrateFileToAppProperties({ forms, drive, file, authUser }) {
     currentProps,
     mergeAppProperties(
       {
-        [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
-        ...(inferredStatus ? { [APP_PROP_STATUS_KEY]: inferredStatus } : {}),
+    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+    ...(inferredStatus ? { [APP_PROP_STATUS_KEY]: inferredStatus } : {}),
       },
       buildOwnerAppPropertiesPatch(currentProps, authUser, ownedByMe)
     )
@@ -2112,32 +2112,60 @@ app.post("/api/forms/:formId/close", async (req, res) => {
     });
     const appProps = driveFile?.data?.appProperties || {};
     const byProps = parseAcceptingResponsesFromAppProperties(appProps);
-    if (byProps === false) {
-      return res.json({ formId, acceptingResponses: false });
-    }
+    // Always proceed best-effort to keep title/items consistent (even when already closed).
 
-    // 互換：旧タグが残っている場合はこのタイミングで除去
+    // 互換：旧タグが残っている場合はこのタイミングで除去しつつ、締切文言を追記
     const current = await forms.forms.get({ formId });
     const currentTitle = String(current?.data?.info?.title || "");
-    const cleanTitle = stripTagsFromTitle(currentTitle);
-    const currentName = String(driveFile?.data?.name || "");
-    const cleanName = stripTagsFromTitle(currentName);
+    const baseTitle = stripTagsFromTitle(currentTitle) || currentTitle;
+    const nextTitle = ensureClosedSuffix(baseTitle);
+    const items = Array.isArray(current?.data?.items) ? current.data.items : [];
 
-    if (cleanTitle && cleanTitle !== currentTitle) {
-      await forms.forms.batchUpdate({
-        formId,
-        requestBody: {
-          requests: [
-            {
-              updateFormInfo: {
-                info: { title: cleanTitle },
-                updateMask: "title",
-              },
-            },
-          ],
+    const currentName = String(driveFile?.data?.name || "");
+    const baseName = stripTagsFromTitle(currentName) || currentName || baseTitle;
+    const nextName = ensureClosedSuffix(baseName);
+
+    /** @type {any[]} */
+    const requests = [];
+    // Title + Description: show "closed" notice at the top.
+    requests.push({
+      updateFormInfo: {
+        info: {
+          title: nextTitle,
+          // Keep existing description but prepend a short notice (best-effort).
+          description: [CLOSED_NOTICE_TITLE, "", String(current?.data?.info?.description || "")]
+            .join("\n")
+            .trim(),
+        },
+        updateMask: "title,description",
+      },
+    });
+
+    // Delete all existing items (questions etc.) to prevent further responses.
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      requests.push({
+        deleteItem: {
+          location: { index: i },
         },
       });
     }
+
+    // Add a non-question text item as a clean "closed" message.
+    requests.push({
+      createItem: {
+        item: {
+          title: CLOSED_NOTICE_TITLE,
+          description: CLOSED_NOTICE_DESCRIPTION,
+          textItem: {},
+        },
+        location: { index: 0 },
+      },
+    });
+
+    await forms.forms.batchUpdate({
+      formId,
+      requestBody: { requests },
+    });
 
     const nextProps = mergeAppProperties(appProps, {
       [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
@@ -2147,7 +2175,7 @@ app.post("/api/forms/:formId/close", async (req, res) => {
     await drive.files.update({
       fileId: formId,
       requestBody: {
-        name: cleanName || cleanTitle || currentName || currentTitle,
+        name: nextName || nextTitle || currentName || currentTitle,
         appProperties: nextProps,
       },
     });

@@ -31,8 +31,14 @@ export default function SettingsPage() {
   const [hour, setHour] = useState(15);
   const [minute, setMinute] = useState(0);
 
-  const [accent, setAccent] = useState("#3b82f6");
-  const [darkMode, setDarkMode] = useState(false);
+  const THEME_PRESETS = [
+    { label: "グレー", value: "#6b7280" },
+    { label: "ブルー", value: "#3b82f6" },
+    { label: "エメラルド", value: "#10b981" },
+    { label: "アンバー", value: "#f59e0b" },
+    { label: "ローズ", value: "#f43f5e" },
+  ];
+  const [accent, setAccent] = useState("#6b7280");
 
   const [participantNameCount, setParticipantNameCount] = useState(1);
 
@@ -70,8 +76,7 @@ export default function SettingsPage() {
         if (r2.status === "fulfilled" && r2.value.ok) {
           const data = await r2.value.json().catch(() => ({}));
           const s = data?.settings || {};
-          setAccent(normalizeHex(s?.accent) || "#3b82f6");
-          setDarkMode(String(s?.scope || "") === "dark");
+          setAccent(normalizeHex(s?.accent) || "#6b7280");
         }
         if (r3.status === "fulfilled" && r3.value.ok) {
           const data = await r3.value.json().catch(() => ({}));
@@ -113,7 +118,7 @@ export default function SettingsPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ accent, scope: darkMode ? "dark" : "sidebar" }),
+          body: JSON.stringify({ accent, scope: "sidebar" }),
         }),
       ]);
 
@@ -148,7 +153,7 @@ export default function SettingsPage() {
 
       // Apply theme immediately (confirm it's reflected).
       try {
-        const s = c?.data?.settings || { accent, scope: darkMode ? "dark" : "sidebar" };
+        const s = c?.data?.settings || { accent, scope: "sidebar" };
         applyAppThemeToDom(s);
         window.localStorage.setItem("gformgen.theme", JSON.stringify(s));
       } catch {
@@ -165,7 +170,7 @@ export default function SettingsPage() {
 
   return (
     <div style={{ maxWidth: 980, margin: "0 auto" }}>
-      <h2 style={{ marginTop: 0, color: "#0f172a" }}>設定</h2>
+      <h2 style={{ marginTop: 0, color: "var(--app-text)" }}>設定</h2>
 
       {loading ? (
         <Box
@@ -186,7 +191,7 @@ export default function SettingsPage() {
       ) : (
         <>
           <section style={{ marginBottom: 24 }}>
-            <h3 style={{ margin: "8px 0 12px", color: "#0f172a" }}>作成画面の既定値</h3>
+            <h3 style={{ margin: "8px 0 12px", color: "var(--app-text)" }}>作成画面の既定値</h3>
             <Box
               sx={{
                 border: "1px solid rgba(148,163,184,0.35)",
@@ -205,7 +210,7 @@ export default function SettingsPage() {
               >
                 {/* 開催日程 */}
                 <Box>
-                  <div style={{ fontWeight: 900, color: "#0f172a", marginBottom: 10 }}>
+                  <div style={{ fontWeight: 900, color: "var(--app-text)", marginBottom: 10 }}>
                     開催日程
                   </div>
                   <Stack spacing={2}>
@@ -220,9 +225,9 @@ export default function SettingsPage() {
                       <MenuItem value={2}>本日 + 2週間</MenuItem>
                       <MenuItem value={3}>本日 + 3週間</MenuItem>
                     </TextField>
-
-                    <div>
-                      <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>
+        
+        <div>
+                      <div style={{ fontWeight: 800, marginBottom: 6, color: "var(--app-text)" }}>
                         時刻
                       </div>
                       <TimePicker
@@ -230,11 +235,15 @@ export default function SettingsPage() {
                         value={timeValue}
                         format="HH:mm"
                         minuteStep={15}
+                        hideDisabledOptions
                         showNow={false}
+                        showSecond={false}
                         disabled={loading || savingAll}
                         disabledTime={() => ({
                           disabledHours: () =>
                             Array.from({ length: 24 }, (_, i) => i).filter((h) => h < 8 || h > 20),
+                          disabledMinutes: () =>
+                            Array.from({ length: 60 }, (_, i) => i).filter((m) => m % 15 !== 0),
                         })}
                         onChange={(t) => {
                           if (!t) return;
@@ -249,9 +258,9 @@ export default function SettingsPage() {
 
                 {/* 入力人数 */}
                 <Box>
-                  <div style={{ fontWeight: 900, color: "#0f172a", marginBottom: 10 }}>
+                  <div style={{ fontWeight: 900, color: "var(--app-text)", marginBottom: 10 }}>
                     入力人数
-                  </div>
+        </div>
                   <Stack spacing={2}>
                     <TextField
                       select
@@ -274,7 +283,7 @@ export default function SettingsPage() {
           </section>
 
           <section style={{ marginBottom: 24 }}>
-            <h3 style={{ margin: "8px 0 12px", color: "#0f172a" }}>テーマ</h3>
+            <h3 style={{ margin: "8px 0 12px", color: "var(--app-text)" }}>テーマ</h3>
           <Box
             sx={{
               border: "1px solid rgba(148,163,184,0.35)",
@@ -291,58 +300,85 @@ export default function SettingsPage() {
                 alignItems: "start",
               }}
             >
-              <div>
-                <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>
-                  アクセントカラー
-                </div>
-                <input
-                  type="color"
-                  value={accent}
-                  onChange={(e) => setAccent(normalizeHex(e.target.value) || "#3b82f6")}
-                  disabled={loading || savingAll}
-                  style={{
-                    width: "100%",
-                    height: 44,
-                    padding: 0,
-                    border: "none",
-                    background: "transparent",
-                  }}
-                />
-              </div>
+              <TextField
+                select
+                label="テーマカラー"
+                value={accent}
+                onChange={(e) => setAccent(String(e.target.value))}
+                disabled={loading || savingAll}
+              >
+                {THEME_PRESETS.map((p) => (
+                  <MenuItem key={p.value} value={p.value}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: 12,
+                        height: 12,
+                        borderRadius: 9999,
+                        background: p.value,
+                        marginRight: 10,
+                        border: "1px solid rgba(15,23,42,0.12)",
+                      }}
+                    />
+                    {p.label}
+                  </MenuItem>
+                ))}
+              </TextField>
 
-              <div>
-                <div style={{ fontWeight: 800, marginBottom: 6, color: "#0f172a" }}>
-                  ダークモード
+              <Box
+                sx={{
+                  border: "1px solid rgba(148,163,184,0.35)",
+                  borderRadius: 2,
+                  padding: "10px 12px",
+                  background: "var(--panel-bg)",
+                }}
+              >
+                <div style={{ fontWeight: 900, marginBottom: 10, color: "var(--app-text)" }}>
+                  プレビュー
                 </div>
-                <Button
-                  type="button"
-                  variant={darkMode ? "contained" : "outlined"}
-                  onClick={() => {
-                    const next = !darkMode;
-                    setDarkMode(next);
-                    // Apply instantly (no save needed) to confirm it's reflected.
-                    try {
-                      const s = { accent, scope: next ? "dark" : "sidebar" };
-                      applyAppThemeToDom(s);
-                      window.localStorage.setItem("gformgen.theme", JSON.stringify(s));
-                    } catch {
-                      // ignore
-                    }
-                  }}
-                  disabled={loading || savingAll}
-                  style={{ width: "100%", height: 44, fontWeight: 900 }}
-                >
-                  {darkMode ? "ON" : "OFF"}
-                </Button>
-              </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 10px",
+                      borderRadius: 9999,
+                      border: "1px solid rgba(148,163,184,0.45)",
+                      background: "rgba(255,255,255,0.65)",
+                      fontWeight: 900,
+                      color: "var(--app-text)",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 9999,
+                        background: accent,
+                        boxShadow: "0 0 0 3px rgba(var(--accent-rgb), 0.12)",
+                      }}
+                    />
+                    {THEME_PRESETS.find((p) => p.value === accent)?.label || "カラー"}
+                  </span>
+
+                  <Button variant="contained" size="small" disableElevation>
+                    主ボタン
+                  </Button>
+                  <Button variant="outlined" size="small">
+                    サブ
+                  </Button>
+                </div>
+              </Box>
             </Box>
           </Box>
-          </section>
+      </section>
 
           {/* (フォーム既定値は上の「作成画面の既定値」に統合) */}
           <Box sx={{ marginTop: 1 }}>
             {error && <div style={{ color: "#b91c1c", fontWeight: 800 }}>{error}</div>}
-            {notice && <div style={{ color: "#059669", fontWeight: 900 }}>{notice}</div>}
+            {notice && <div style={{ color: "var(--accent2)", fontWeight: 900 }}>{notice}</div>}
           </Box>
 
           <Box sx={{ marginTop: 2 }}>
@@ -350,7 +386,7 @@ export default function SettingsPage() {
               variant="contained"
               onClick={onSaveAll}
               disabled={loading || savingAll}
-              style={{ width: "100%" }}
+              style={{ minWidth: 160 }}
             >
               {savingAll ? "保存中…" : "保存"}
             </Button>

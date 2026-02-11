@@ -9,11 +9,22 @@ body {
   transition: background 220ms ease, color 220ms ease;
 }
 
+/* Smooth theme transitions for key UI surfaces */
+.sangaku-sidebar,
+.sangaku-nav-item,
+.manual-card,
+.manual-detail,
+.stats-action-groups,
+.stats-action-chip {
+  transition: background 220ms ease, color 220ms ease, border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
 :root {
   --mobile-nav-h: 74px; /* 下部ナビの想定高さ（safe-area は別途加算） */
-  --accent: #3b82f6;
-  --accent2: #2563eb;
-  --accent-rgb: 59, 130, 246;
+  --accent: #6b7280;
+  --accent2: #4b5563;
+  --accent-rgb: 107, 114, 128;
   --app-text: #0f172a;
   --app-bg: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
   --panel-bg: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
@@ -24,16 +35,7 @@ body {
   );
 }
 
-html[data-theme="dark"] {
-  --app-text: #e5e7eb;
-  --app-bg: linear-gradient(135deg, #0b1220 0%, #0f172a 100%);
-  --panel-bg: linear-gradient(
-    180deg,
-    rgba(30, 41, 59, 0.92) 0%,
-    rgba(15, 23, 42, 0.92) 100%
-  );
-  --sidebar-bg: linear-gradient(180deg, rgba(2, 6, 23, 0.92), rgba(15, 23, 42, 0.92));
-}
+/* Dark mode removed (kept UI consistent and readable). */
 
 * {
   box-sizing: border-box;

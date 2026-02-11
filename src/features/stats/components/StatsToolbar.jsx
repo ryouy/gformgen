@@ -131,10 +131,16 @@ export default function StatsToolbar({
               return (
                 <li {...props} key={option.formId} style={{ padding: "10px 12px" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <div style={{ fontWeight: 700, color: "#0f172a" }}>
+                    <div style={{ fontWeight: 700, color: "var(--app-text)" }}>
                       {truncate(title, 18)}
                     </div>
-                    <div style={{ fontSize: "0.82rem", fontWeight: 800, color: "#64748b" }}>
+                    <div
+                      style={{
+                        fontSize: "0.82rem",
+                        fontWeight: 800,
+                        color: "color-mix(in srgb, var(--app-text) 55%, transparent)",
+                      }}
+                    >
                       {`出席:${s ? s.attendeeCount : "…"}人 / 回答:${
                         s ? s.responseCount : "…"
                       }件`}
@@ -154,7 +160,7 @@ export default function StatsToolbar({
                   minWidth: { xs: 220, sm: 320 },
                   "& .MuiOutlinedInput-root": {
                     borderRadius: "14px",
-                    background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+                    background: "var(--panel-bg)",
                     boxShadow: "0 2px 10px rgba(15,23,42,0.06)",
                     fontWeight: 700,
                   },
@@ -162,10 +168,10 @@ export default function StatsToolbar({
                     borderColor: "rgba(148, 163, 184, 0.6)",
                   },
                   "& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline": {
-                    borderColor: "rgba(59,130,246,0.55)",
+                    borderColor: "rgba(var(--accent-rgb),0.55)",
                   },
                   "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
-                    borderColor: "rgba(59,130,246,0.8)",
+                    borderColor: "rgba(var(--accent-rgb),0.8)",
                   },
                 }}
               />
@@ -189,13 +195,22 @@ export default function StatsToolbar({
               style={{
                 fontSize: "0.85rem",
                 fontWeight: 700,
-                color: acceptingResponses === false ? "#64748b" : "#059669",
+                color:
+                  acceptingResponses === false
+                    ? "color-mix(in srgb, var(--app-text) 55%, transparent)"
+                    : "var(--accent2)",
               }}
             >
               {acceptingResponses === false ? "締切済み" : "集計中"}
             </span>
             {refreshing && (
-              <span style={{ fontSize: "0.78rem", color: "#64748b", fontWeight: 800 }}>
+              <span
+                style={{
+                  fontSize: "0.78rem",
+                  color: "color-mix(in srgb, var(--app-text) 55%, transparent)",
+                  fontWeight: 800,
+                }}
+              >
                 更新中…
               </span>
             )}
@@ -262,7 +277,7 @@ export default function StatsToolbar({
                   borderRadius: 12,
                   border: "1px solid rgba(148,163,184,0.6)",
                   background: "#fff",
-                  color: "#3b82f6",
+                  color: "var(--accent)",
                   cursor: "pointer",
                   padding: 0,
                   opacity: formUrl ? 1 : 0.55,

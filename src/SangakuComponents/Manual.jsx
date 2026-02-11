@@ -137,14 +137,12 @@ export default function ManualPage() {
             </p>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>出欠</b>：出席/欠席/未回答が確認できます
+                <b>出欠</b>：出席/欠席が確認できます
               </li>
               <li>
                 <b>備考</b>：自由記述がある場合は、備考だけをまとめて見られます
               </li>
-              <li>
-                <b>未回答</b>：未回答者の一覧が見られます
-              </li>
+              
             </ul>
           </>
         ),
@@ -173,7 +171,7 @@ export default function ManualPage() {
             </p>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>締切</b>：アプリ上で「締切済み扱い」にします（Googleフォーム自体の受付停止ではありません、追加実装予定）
+                <b>締切</b>：「締切済み」にします
               </li>
               <li>
                 <b>削除</b>：
@@ -243,9 +241,7 @@ export default function ManualPage() {
               <li>
                 <b>集計が更新されない</b>：ページを再読み込みしてみてください。
               </li>
-              <li>
-                <b>締切にしたのに回答が増える</b>：このアプリの「締切」はアプリ上の扱いです（Googleフォーム自体の受付停止ではありません）。
-              </li>
+              
             </ul>
           </>
         ),

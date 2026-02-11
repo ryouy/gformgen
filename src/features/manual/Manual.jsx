@@ -106,7 +106,12 @@ export default function ManualPage() {
               </li>
               <li>
                 <b>参加者名の入力人数（1回答あたり）</b>
-                <div style={{ color: "rgba(15,23,42,0.78)", fontWeight: 800 }}>
+            <div
+              style={{
+                color: "color-mix(in srgb, var(--app-text) 65%, transparent)",
+                fontWeight: 800,
+              }}
+            >
                   例：1社から複数名出席する可能性がある場合は「2〜5」などにします
                 </div>
               </li>
@@ -173,7 +178,7 @@ export default function ManualPage() {
             </p>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>締切</b>：アプリ上で「締切済み扱い」にします（Googleフォーム自体の受付停止ではありません、追加実装予定）
+                <b>締切</b>：「締切済み」にします。
               </li>
               <li>
                 <b>削除</b>：
@@ -243,8 +248,22 @@ export default function ManualPage() {
               <li>
                 <b>集計が更新されない</b>：ページを再読み込みしてみてください。
               </li>
+              
+            </ul>
+          </>
+        ),
+      },
+      {
+        id: "s10b",
+        title: "10. 設定でできること",
+        body: (
+          <>
+            <ul style={{ marginTop: 8 }}>
               <li>
-                <b>締切にしたのに回答が増える</b>：このアプリの「締切」はアプリ上の扱いです（Googleフォーム自体の受付停止ではありません）。
+                <b>作成画面の既定値</b>：開催日程（何週間後 + 時刻）と、参加者名の入力人数を変更できます。
+              </li>
+              <li>
+                <b>テーマカラー</b>：アプリ全体のアクセント色（ボタンや選択状態の色）を変更できます。
               </li>
             </ul>
           </>
@@ -263,7 +282,11 @@ export default function ManualPage() {
                 <b>Mail</b>：
                 <a
                   href="mailto:s1300041@u-aizu.ac.jp"
-                  style={{ color: "#1d4ed8", textUnderlineOffset: 3, marginLeft: 6 }}
+                  style={{
+                    color: "var(--accent2)",
+                    textUnderlineOffset: 3,
+                    marginLeft: 6,
+                  }}
                 >
                   s1300041@u-aizu.ac.jp
                 </a>
@@ -272,7 +295,11 @@ export default function ManualPage() {
                 <b>技術</b>：
                 <a
                   href="https://github.com/ryouy/gformgen"
-                  style={{ color: "#1d4ed8", textUnderlineOffset: 3, marginLeft: 6 }}
+                  style={{
+                    color: "var(--accent2)",
+                    textUnderlineOffset: 3,
+                    marginLeft: 6,
+                  }}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -306,7 +333,7 @@ export default function ManualPage() {
 
   return (
     <div style={{ maxWidth: 980, margin: "0 auto" }}>
-      <h2 style={{ marginTop: 0, color: "#0f172a" }}>説明書</h2>
+      <h2 style={{ marginTop: 0, color: "var(--app-text)" }}>説明書</h2>
 
       <div className="manual-grid" role="list" aria-label="説明書の章">
         {sections.map((s) => {

@@ -54,15 +54,15 @@
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 500;
-  color: #2e5aeb;
+  color: var(--accent2);
   background: #ffffff;
   transition: all 0.25s ease;
   white-space: nowrap;
 }
 
 .nav-tab:hover {
-  background: rgba(230, 238, 255, 0.9);
-  color: #000000;
+  background: rgba(var(--accent-rgb), 0.10);
+  color: var(--app-text);
   transform: translateY(-1px);
 }
 
