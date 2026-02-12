@@ -1,4 +1,5 @@
 import { formatPeopleMultiline } from "../utils/formatters";
+import { expandParticipantRows } from "../utils/expandParticipantRows";
 
 function escapeCsvCell(v) {
   const s = String(v ?? "");
@@ -24,10 +25,11 @@ function toSafeFilenameBase(input, { fallback } = {}) {
 }
 
 export function downloadResponsesCsv({ rows, selectedFormId, title }) {
+  const expanded = expandParticipantRows(rows);
   const header = ["company", "role", "name", "attendance", "count", "remarks", "submittedAt"];
   const lines = [
     header.join(","),
-    ...(rows || []).map((r) =>
+    ...(expanded || []).map((r) =>
       [
         r?.company,
         formatPeopleMultiline(r?.role, { empty: "" }),

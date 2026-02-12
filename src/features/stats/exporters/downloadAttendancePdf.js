@@ -1,9 +1,11 @@
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { formatPeopleMultiline } from "../utils/formatters";
+import { expandParticipantRows } from "../utils/expandParticipantRows";
 
 export function downloadAttendancePdf({ rows, meetingTitle, fontData }) {
-  const attending = (rows || []).filter((r) => r?.attendance === "出席");
+  const expanded = expandParticipantRows(rows);
+  const attending = (expanded || []).filter((r) => r?.attendance === "出席");
   if (attending.length === 0) {
     alert("出席者データがありません。");
     return;

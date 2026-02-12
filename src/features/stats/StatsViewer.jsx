@@ -12,6 +12,7 @@ import {
   formatDateYMD,
   formatPeopleMultiline,
 } from "./utils/formatters";
+import { expandParticipantRows } from "./utils/expandParticipantRows";
 
 const FORM_NAME_TAG_PREFIX = "[gformgen:sangaku]";
 const FORM_CLOSED_TAG = "[gformgen:closed]";
@@ -284,6 +285,9 @@ export default function StatsViewer({ initialFormId }) {
       });
   }, [rows]);
 
+  // 1回答に複数名が入っている場合、表示/CSV/PDFは「1名=1レコード」に展開する
+  const expandedRows = useMemo(() => expandParticipantRows(rows), [rows]);
+
   const normalizeTitle = useCallback(
     (t) =>
       String(t || "")
@@ -307,15 +311,15 @@ export default function StatsViewer({ initialFormId }) {
 
   const handleDownloadCsv = useCallback(() => {
     downloadResponsesCsv({
-      rows,
+      rows: expandedRows,
       selectedFormId,
       title: normalizeTitle(selectedForm?.title),
     });
-  }, [rows, selectedFormId, normalizeTitle, selectedForm]);
+  }, [expandedRows, selectedFormId, normalizeTitle, selectedForm]);
 
   const handleDownloadPdf = useCallback(() => {
-    downloadAttendancePdf({ rows, meetingTitle, fontData });
-  }, [rows, meetingTitle]);
+    downloadAttendancePdf({ rows: expandedRows, meetingTitle, fontData });
+  }, [expandedRows, meetingTitle]);
 
   const handleCloseForm = useCallback(async () => {
     if (!selectedFormId) return;
@@ -450,7 +454,7 @@ export default function StatsViewer({ initialFormId }) {
           )}
 
           {/* 全体集計テーブル（常に表示） */}
-          <DataTable participants={rows} />
+          <DataTable participants={expandedRows} />
         </>
       )}
 

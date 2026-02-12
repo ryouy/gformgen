@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Box, Button, CircularProgress, MenuItem, Stack, TextField } from "@mui/material";
+import { ThemeProvider } from "@mui/material/styles";
 import { TimePicker } from "antd";
 import dayjs from "dayjs";
 import locale from "antd/es/date-picker/locale/ja_JP";
 import "antd/dist/reset.css";
 import { apiUrl, authUrl } from "../../lib/apiBase";
 import { applyAppThemeToDom } from "../../lib/appTheme";
+import { buildMuiTheme } from "../../lib/muiTheme";
 
 function normalizeHex(input) {
   const s = String(input || "").trim();
@@ -18,6 +20,17 @@ function normalizeHex(input) {
     return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
   }
   return "";
+}
+
+function hexToRgbCsv(hex) {
+  const s = String(hex || "").trim().toLowerCase();
+  const m = s.match(/^#([0-9a-f]{6})$/);
+  if (!m) return null;
+  const n = Number.parseInt(m[1], 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `${r}, ${g}, ${b}`;
 }
 
 export default function SettingsPage() {
@@ -39,6 +52,11 @@ export default function SettingsPage() {
     { label: "ローズ", value: "#f43f5e" },
   ];
   const [accent, setAccent] = useState("#6b7280");
+  const previewMuiTheme = useMemo(
+    () => buildMuiTheme({ accent, scope: "sidebar" }),
+    [accent]
+  );
+  const previewRgb = useMemo(() => hexToRgbCsv(normalizeHex(accent)), [accent]);
 
   const [participantNameCount, setParticipantNameCount] = useState(1);
 
@@ -357,18 +375,22 @@ export default function SettingsPage() {
                         height: 10,
                         borderRadius: 9999,
                         background: accent,
-                        boxShadow: "0 0 0 3px rgba(var(--accent-rgb), 0.12)",
+                        boxShadow: previewRgb
+                          ? `0 0 0 3px rgba(${previewRgb}, 0.12)`
+                          : "0 0 0 3px rgba(148,163,184, 0.18)",
                       }}
                     />
                     {THEME_PRESETS.find((p) => p.value === accent)?.label || "カラー"}
                   </span>
 
-                  <Button variant="contained" size="small" disableElevation>
-                    主ボタン
-                  </Button>
-                  <Button variant="outlined" size="small">
-                    サブ
-                  </Button>
+                  <ThemeProvider theme={previewMuiTheme}>
+                    <Button variant="contained" size="small" disableElevation>
+                      主ボタン
+                    </Button>
+                    <Button variant="outlined" size="small">
+                      サブ
+                    </Button>
+                  </ThemeProvider>
                 </div>
               </Box>
             </Box>
