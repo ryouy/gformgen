@@ -142,14 +142,12 @@ export default function ManualPage() {
             </p>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>出欠</b>：出席/欠席/未回答が確認できます
+                <b>出欠</b>：出席/欠席が確認できます
               </li>
               <li>
                 <b>備考</b>：自由記述がある場合は、備考だけをまとめて見られます
               </li>
-              <li>
-                <b>未回答</b>：未回答者の一覧が見られます
-              </li>
+             
             </ul>
           </>
         ),
