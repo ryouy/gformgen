@@ -26,7 +26,7 @@ function toSafeFilenameBase(input, { fallback } = {}) {
 
 export function downloadResponsesCsv({ rows, selectedFormId, title }) {
   const expanded = expandParticipantRows(rows);
-  const header = ["company", "role", "name", "attendance", "count", "remarks", "submittedAt"];
+  const header = ["company", "role", "name", "attendance", "remarks", "submittedAt"];
   const lines = [
     header.join(","),
     ...(expanded || []).map((r) =>
@@ -35,7 +35,6 @@ export function downloadResponsesCsv({ rows, selectedFormId, title }) {
         formatPeopleMultiline(r?.role, { empty: "" }),
         formatPeopleMultiline(r?.name, { empty: "" }),
         r?.attendance,
-        r?.count,
         r?.remarks,
         r?.submittedAt,
       ]

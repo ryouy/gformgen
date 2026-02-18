@@ -101,9 +101,6 @@ cd .. && npm run dev
 
 ## Notes
 
-* “Close” is **app-level** and does **not** toggle Google Forms’ “Stop accepting responses”
-  * If you need hard close, implement it via Forms API + additional scopes
-* Session model
   * Recommended: set `GF_SESSION_PASSWORD` to enable encrypted HttpOnly cookie persistence (serverless-friendly)
   * Fallback: tokens may be kept in memory (cold start / instance swap ⇒ re-login required)
 

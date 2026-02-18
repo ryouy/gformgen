@@ -17,7 +17,7 @@ export default function ManualPage() {
                 <b>出欠確認フォームを自動で作る</b>（Googleフォーム）
               </li>
               <li>
-                作ったフォームを <b>リンクやQRコードで配布</b>できる
+                作ったフォームを <b>リンクや二次元バーコードで配布</b>できる
               </li>
               <li>
                 回答が集まったら <b>出欠状況を一覧で確認</b>できる
@@ -121,7 +121,7 @@ export default function ManualPage() {
                 <b>リンクをコピー</b> → 回答用URLをコピーできます
               </li>
               <li>
-                <b>QRコードを表示</b> → 参加者に見せて配布できます
+                <b>二次元バーコードを表示</b> → 参加者に見せて配布できます
               </li>
             </ul>
           </>
@@ -194,7 +194,7 @@ export default function ManualPage() {
       },
       {
         id: "s8",
-        title: "8. リンク / QRコードで配布する",
+        title: "8. リンク / 二次元バーコードで配布する",
         body: (
           <>
             <p style={{ marginTop: 0 }}>
@@ -205,7 +205,7 @@ export default function ManualPage() {
                 <b>リンク</b>：回答用フォームを開きます（参加者へURLを共有）
               </li>
               <li>
-                <b>QR</b>：QRコードを表示します（会場で投影/印刷して配布）
+                <b>QR</b>：二次元バーコードを表示します（会場で投影/印刷して配布）
               </li>
             </ul>
           </>

@@ -62,7 +62,6 @@ export default function RemarksModal({ open, onClose, remarkRows, selectedFormId
                     <div className="remarks-sub">
                       {summarizePeople(r?.name, { empty: "—" })}
                       {r?.attendance ? ` / ${r.attendance}` : ""}
-                      {Number.isFinite(Number(r?.count)) ? ` / ${Number(r.count)}人` : ""}
                     </div>
                   </div>
                   <div className="remarks-time">{formatDateTimeYMDHM(r?.submittedAt)}</div>

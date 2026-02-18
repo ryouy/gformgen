@@ -1,19 +1,19 @@
 import { useLayoutEffect, useRef } from "react";
 import Chart from "chart.js/auto";
 
-export default function GraphView({ partiicipants }) {
+export default function GraphView({ participants, partiicipants }) {
+  const list = Array.isArray(participants)
+    ? participants
+    : Array.isArray(partiicipants)
+      ? partiicipants
+      : [];
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
 
-  const totalAttendance = partiicipants
-    .filter((p) => p.status === "出席")
-    .reduce((sum, p) => sum + p.count, 0);
-  const totalAbsence = partiicipants
-    .filter((p) => p.status === "欠席")
-    .reduce((sum, p) => sum + p.count, 0);
-  const attendanceCompanies = partiicipants.filter(
-    (p) => p.status === "出席"
-  ).length;
+  const getStatus = (p) => p?.attendance || p?.status || "";
+  const totalAttendance = list.filter((p) => getStatus(p) === "出席").length;
+  const totalAbsence = list.filter((p) => getStatus(p) === "欠席").length;
+  const attendanceCompanies = list.filter((p) => getStatus(p) === "出席").length;
 
   useLayoutEffect(() => {
     const ctx = canvasRef.current;
@@ -38,7 +38,7 @@ export default function GraphView({ partiicipants }) {
         labels: ["出席", "欠席"],
         datasets: [
           {
-            label: "人数",
+            label: "件数",
             data: [totalAttendance, totalAbsence],
             backgroundColor: ["#4f46e5", "#f87171"],
           },
@@ -59,7 +59,7 @@ export default function GraphView({ partiicipants }) {
         chartRef.current = null;
       }
     };
-  }, [partiicipants]);
+  }, [list]);
 
   return (
     <>
@@ -73,19 +73,17 @@ export default function GraphView({ partiicipants }) {
             <th>事業所名</th>
             <th>代表者名</th>
             <th>出席/欠席</th>
-            <th>参加人数</th>
           </tr>
         </thead>
         <tbody>
-          {partiicipants.map((p, i) => (
+          {list.map((p, i) => (
             <tr
               key={i}
-              className={p.status === "欠席" ? "absent-row" : "present-row"}
+              className={getStatus(p) === "欠席" ? "absent-row" : "present-row"}
             >
               <td>{p.company}</td>
               <td>{p.name}</td>
-              <td>{p.status}</td>
-              <td>{p.status === "出席" ? p.count : 0}</td>
+              <td>{getStatus(p)}</td>
             </tr>
           ))}
         </tbody>

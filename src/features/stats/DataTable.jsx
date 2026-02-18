@@ -24,7 +24,6 @@ export default function DataTable({ participants }) {
               <th>役職名</th>
               <th>氏名</th>
               <th>出席/欠席</th>
-              <th>人数</th>
               <th>送信日時</th>
             </tr>
           </thead>
@@ -40,7 +39,6 @@ export default function DataTable({ participants }) {
                   <td>{summarizePeopleForTable(p.role, { empty: "ー", suffix: "名" })}</td>
                   <td>{summarizePeopleForTable(p.name, { empty: "", suffix: "名" })}</td>
                   <td>{attendingLabel}</td>
-                  <td>{Number.isFinite(Number(p?.count)) ? Number(p?.count) : 0}</td>
                   <td className="submitted-at-cell">
                     {formatSubmittedAt(p?.submittedAt)}
                   </td>
