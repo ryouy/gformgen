@@ -177,6 +177,14 @@ export default function ManualPage() {
             <ul style={{ marginTop: 8 }}>
               <li>
                 <b>締切</b>：「締切済み」にします。
+                <div
+                  style={{
+                    color: "color-mix(in srgb, var(--app-text) 65%, transparent)",
+                    fontWeight: 800,
+                  }}
+                >
+                  締切時はタイトルに「（締め切られています）」が付き、回答受付用の設問は非表示になります。
+                </div>
               </li>
               <li>
                 <b>削除</b>：

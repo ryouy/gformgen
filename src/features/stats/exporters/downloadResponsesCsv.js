@@ -1,42 +1,26 @@
-import { formatPeopleMultiline } from "../utils/formatters";
+import { formatDateTimeYMDHM, formatPeopleMultiline } from "../utils/formatters";
 import { expandParticipantRows } from "../utils/expandParticipantRows";
+import { buildExportFilename } from "./fileNaming";
 
 function escapeCsvCell(v) {
   const s = String(v ?? "");
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function toSafeFilenameBase(input, { fallback } = {}) {
-  const s = String(input ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  // Windows/mac friendly: remove reserved characters and control chars.
-  const cleaned = s
-    .replace(/[\\/:*?"<>|]/g, " ")
-    .replace(/[\u0000-\u001F\u007F]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    // Avoid trailing dots/spaces which can be problematic on Windows.
-    .replace(/[.\s]+$/g, "")
-    .trim();
-
-  return cleaned || String(fallback || "responses");
-}
-
 export function downloadResponsesCsv({ rows, selectedFormId, title }) {
   const expanded = expandParticipantRows(rows);
-  const header = ["company", "role", "name", "attendance", "remarks", "submittedAt"];
+  const header = ["No", "事業所名", "役職名", "氏名", "出席/欠席", "備考", "送信日時"];
   const lines = [
     header.join(","),
-    ...(expanded || []).map((r) =>
+    ...(expanded || []).map((r, i) =>
       [
+        i + 1,
         r?.company,
         formatPeopleMultiline(r?.role, { empty: "" }),
         formatPeopleMultiline(r?.name, { empty: "" }),
         r?.attendance,
         r?.remarks,
-        r?.submittedAt,
+        formatDateTimeYMDHM(r?.submittedAt),
       ]
         .map(escapeCsvCell)
         .join(",")
@@ -49,9 +33,12 @@ export function downloadResponsesCsv({ rows, selectedFormId, title }) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  const fallback = `responses_${selectedFormId || "unknown"}`;
-  const base = toSafeFilenameBase(title, { fallback });
-  a.download = `${base}.csv`;
+  a.download = buildExportFilename({
+    title,
+    selectedFormId,
+    kind: "csv",
+    ext: "csv",
+  });
   document.body.appendChild(a);
   a.click();
   a.remove();

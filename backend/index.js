@@ -96,6 +96,9 @@ const APP_PROP_OWNER_NAME_KEY = "gformgen_owner_name";
 const CLOSED_TITLE_SUFFIX = "（締め切られています）";
 const CLOSED_NOTICE_TITLE = "このフォームは締め切られています。";
 const CLOSED_NOTICE_DESCRIPTION = "回答の受付は終了しました。";
+const APP_PROP_TYPE_FORM_SNAPSHOT = "form_snapshot";
+const APP_PROP_FORM_ID_KEY = "gformgen_form_id";
+const FORM_SNAPSHOT_SCHEMA_VERSION = 1;
 
 // User settings stored on Drive as a small metadata-only file (appProperties).
 // This works with the existing minimal scope: `drive.file` (only app-created files are accessible).
@@ -1137,6 +1140,119 @@ async function buildQuestionIdToTitleMap(forms, formId) {
   return map;
 }
 
+function streamToString(stream) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    stream.on("data", (chunk) => (data += chunk));
+    stream.on("end", () => resolve(data));
+    stream.on("error", reject);
+  });
+}
+
+async function findFormSnapshotFileOrNull({ drive, formId }) {
+  const id = String(formId || "").trim();
+  if (!id) return null;
+  const q = [
+    "trashed = false",
+    `appProperties has { key='${APP_PROP_APP_KEY}' and value='${APP_PROP_APP_VALUE}' }`,
+    `appProperties has { key='${APP_PROP_TYPE_KEY}' and value='${APP_PROP_TYPE_FORM_SNAPSHOT}' }`,
+    `appProperties has { key='${APP_PROP_FORM_ID_KEY}' and value='${id}' }`,
+  ].join(" and ");
+  const result = await drive.files.list({
+    q,
+    orderBy: "modifiedTime desc",
+    pageSize: 5,
+    fields: "files(id,name,modifiedTime,appProperties)",
+  });
+  const files = result?.data?.files || [];
+  return files?.[0] || null;
+}
+
+async function readDriveJsonFileOrNull(drive, fileId) {
+  const id = String(fileId || "").trim();
+  if (!id) return null;
+  const r = await drive.files.get(
+    { fileId: id, alt: "media" },
+    { responseType: "stream" }
+  );
+  const text = await streamToString(r?.data);
+  try {
+    return JSON.parse(String(text || ""));
+  } catch {
+    return null;
+  }
+}
+
+async function upsertFormSnapshot({ drive, authUser, formId, questionIdToTitle }) {
+  const id = String(formId || "").trim();
+  if (!id) return { ok: false };
+  const existing = await findFormSnapshotFileOrNull({ drive, formId: id });
+  const payload = {
+    schemaVersion: FORM_SNAPSHOT_SCHEMA_VERSION,
+    formId: id,
+    createdAt: new Date().toISOString(),
+    questionIdToTitle,
+  };
+  const patch = {
+    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+    [APP_PROP_TYPE_KEY]: APP_PROP_TYPE_FORM_SNAPSHOT,
+    [APP_PROP_FORM_ID_KEY]: id,
+    ...(authUser?.sub ? { [APP_PROP_OWNER_SUB_KEY]: String(authUser.sub) } : {}),
+    ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
+    ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
+  };
+
+  if (!existing?.id) {
+    const created = await drive.files.create({
+      requestBody: {
+        name: `gformgen_form_snapshot_${id}.json`,
+        mimeType: "application/json",
+        appProperties: patch,
+      },
+      media: {
+        mimeType: "application/json",
+        body: JSON.stringify(payload, null, 2),
+      },
+      fields: "id",
+    });
+    return { ok: Boolean(created?.data?.id), fileId: created?.data?.id || "" };
+  }
+
+  const nextProps = mergeAppProperties(existing?.appProperties || {}, patch);
+  await drive.files.update({
+    fileId: existing.id,
+    requestBody: {
+      appProperties: nextProps,
+    },
+    media: {
+      mimeType: "application/json",
+      body: JSON.stringify(payload, null, 2),
+    },
+    fields: "id",
+  });
+  return { ok: true, fileId: existing.id };
+}
+
+async function buildQuestionIdToTitleMapWithSnapshot({ forms, drive, formId }) {
+  try {
+    const map = await buildQuestionIdToTitleMap(forms, formId);
+    if (map && map.size > 0) return map;
+  } catch {
+    // fallthrough
+  }
+
+  try {
+    const snapFile = await findFormSnapshotFileOrNull({ drive, formId });
+    if (!snapFile?.id) return new Map();
+    const json = await readDriveJsonFileOrNull(drive, snapFile.id);
+    const obj = json?.questionIdToTitle;
+    if (!obj || typeof obj !== "object") return new Map();
+    return new Map(Object.entries(obj).map(([k, v]) => [String(k), String(v)]));
+  } catch {
+    return new Map();
+  }
+}
+
 function getAnswerValue(answer) {
   return (
     answer?.textAnswers?.answers?.[0]?.value ??
@@ -1663,7 +1779,11 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
     if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
     const forms = google.forms({ version: "v1", auth: authClient });
 
-    const questionIdToTitle = await buildQuestionIdToTitleMap(forms, formId);
+    const questionIdToTitle = await buildQuestionIdToTitleMapWithSnapshot({
+      forms,
+      drive,
+      formId,
+    });
     const { responses } = await listAllFormResponses(forms, formId);
 
     const rows = responses.map((r) => {
@@ -1796,7 +1916,11 @@ app.get("/api/forms/:formId/summary", async (req, res) => {
     if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
     const forms = google.forms({ version: "v1", auth: authClient });
 
-    const questionIdToTitle = await buildQuestionIdToTitleMap(forms, formId);
+    const questionIdToTitle = await buildQuestionIdToTitleMapWithSnapshot({
+      forms,
+      drive,
+      formId,
+    });
     const { responses } = await listAllFormResponses(forms, formId);
 
     const responseCount = responses.length;
@@ -2120,6 +2244,31 @@ app.post("/api/forms/:formId/close", async (req, res) => {
     const baseTitle = stripTagsFromTitle(currentTitle) || currentTitle;
     const nextTitle = ensureClosedSuffix(baseTitle);
     const items = Array.isArray(current?.data?.items) ? current.data.items : [];
+
+    // IMPORTANT:
+    // After we delete items, we lose the ability to map response answer questionIds to titles.
+    // Snapshot the questionId->title map to Drive so closed forms can still be aggregated.
+    try {
+      /** @type {Record<string, string>} */
+      const questionIdToTitleObj = {};
+      for (const item of items) {
+        const qid = item?.questionItem?.question?.questionId;
+        const title = item?.title;
+        if (!qid || !title) continue;
+        questionIdToTitleObj[String(qid)] = String(title);
+      }
+      if (Object.keys(questionIdToTitleObj).length > 0) {
+        const authUser = await getAuthUserOrNull(req, res);
+        await upsertFormSnapshot({
+          drive,
+          authUser,
+          formId,
+          questionIdToTitle: questionIdToTitleObj,
+        });
+      }
+    } catch (e) {
+      console.warn("failed to snapshot form items:", e?.message || String(e));
+    }
 
     const currentName = String(driveFile?.data?.name || "");
     const baseName = stripTagsFromTitle(currentName) || currentName || baseTitle;

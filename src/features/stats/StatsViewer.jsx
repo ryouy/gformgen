@@ -28,7 +28,6 @@ function notifyUnauthorized(message) {
 }
 
 export default function StatsViewer({ initialFormId }) {
-  const meetingTitle = "2025年10月 定例会（会津地区経営者協会）";
   const [forms, setForms] = useState([]);
   const [summaries, setSummaries] = useState({}); // { [formId]: { responseCount, attendeeCount } }
   const [selectedFormId, setSelectedFormId] = useState("");
@@ -318,8 +317,13 @@ export default function StatsViewer({ initialFormId }) {
   }, [expandedRows, selectedFormId, normalizeTitle, selectedForm]);
 
   const handleDownloadPdf = useCallback(() => {
-    downloadAttendancePdf({ rows: expandedRows, meetingTitle, fontData });
-  }, [expandedRows, meetingTitle]);
+    downloadAttendancePdf({
+      rows: expandedRows,
+      selectedFormId,
+      title: normalizeTitle(selectedForm?.title),
+      fontData,
+    });
+  }, [expandedRows, selectedFormId, normalizeTitle, selectedForm]);
 
   const handleCloseForm = useCallback(async () => {
     if (!selectedFormId) return;
