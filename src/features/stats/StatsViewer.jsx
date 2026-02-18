@@ -17,6 +17,7 @@ import { expandParticipantRows } from "./utils/expandParticipantRows";
 const FORM_NAME_TAG_PREFIX = "[gformgen:sangaku]";
 const FORM_CLOSED_TAG = "[gformgen:closed]";
 const SELECTED_FORM_ID_STORAGE_KEY = "sangaku.selectedFormId";
+const RECENT_FORM_IDS_STORAGE_KEY = "sangaku.recentFormIds";
 
 function notifyUnauthorized(message) {
   if (typeof window === "undefined") return;
@@ -33,7 +34,6 @@ export default function StatsViewer({ initialFormId }) {
   const [selectedFormId, setSelectedFormId] = useState("");
   const [formUrl, setFormUrl] = useState("");
   const [acceptingResponses, setAcceptingResponses] = useState(null);
-  const [listMode, setListMode] = useState("open"); // "open" | "closed"
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,10 +42,33 @@ export default function StatsViewer({ initialFormId }) {
   const [formsError, setFormsError] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [emptyDelayDone, setEmptyDelayDone] = useState(false);
+  const [recentFormIds, setRecentFormIds] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem(RECENT_FORM_IDS_STORAGE_KEY);
+      const arr = JSON.parse(String(raw || "[]"));
+      return Array.isArray(arr) ? arr.filter(Boolean).map(String).slice(0, 8) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const autoRefreshTimerRef = useRef(null);
   const lastAutoRefreshAtRef = useRef(0);
   const fetchInFlightRef = useRef(false);
+
+  const rememberRecentFormId = useCallback((formId) => {
+    const id = String(formId || "").trim();
+    if (!id) return;
+    setRecentFormIds((prev) => {
+      const next = [id, ...(prev || []).filter((x) => x !== id)].slice(0, 8);
+      try {
+        window.localStorage.setItem(RECENT_FORM_IDS_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
 
   const fetchForms = useCallback(async () => {
     setFormsError(null);
@@ -202,24 +225,19 @@ export default function StatsViewer({ initialFormId }) {
       if (!nextId) return;
       setEmptyDelayDone(false);
       setSelectedFormId(nextId);
+      rememberRecentFormId(nextId);
       window.localStorage.setItem(SELECTED_FORM_ID_STORAGE_KEY, nextId);
-      // 選択したフォームが締切済みならリストもそちらに寄せる
-      const selected = list.find((f) => f.formId === nextId);
-      setListMode(selected?.acceptingResponses === false ? "closed" : "open");
       // 一覧にサマリー表示するため、まず選択フォームだけ先に取る
       void fetchSummary(nextId);
       await fetchFormInfo(nextId);
       await fetchRows(nextId);
     })();
-  }, [fetchForms, fetchFormInfo, fetchRows, fetchSummary, initialFormId]);
+  }, [fetchForms, fetchFormInfo, fetchRows, fetchSummary, initialFormId, rememberRecentFormId]);
 
-  // listMode/forms 変更に応じて、表示対象リスト分のサマリーを事前取得
+  // 一覧に表示するフォーム分のサマリーを事前取得
   useEffect(() => {
-    const open = forms.filter((f) => f.acceptingResponses !== false);
-    const closed = forms.filter((f) => f.acceptingResponses === false);
-    const list = listMode === "closed" ? closed : open;
-    void prefetchSummaries(list.map((f) => f.formId));
-  }, [forms, listMode, prefetchSummaries]);
+    void prefetchSummaries(forms.map((f) => f.formId));
+  }, [forms, prefetchSummaries]);
 
   // フォーム送信後に戻ってきた時に自動更新（ノーリロード）
   useEffect(() => {
@@ -292,6 +310,7 @@ export default function StatsViewer({ initialFormId }) {
       String(t || "")
         .replace(FORM_NAME_TAG_PREFIX, "")
         .replace(FORM_CLOSED_TAG, "")
+        .replace("（締め切られています）", "")
         .replace(/\s+/g, " ")
         .trim(),
     []
@@ -303,9 +322,15 @@ export default function StatsViewer({ initialFormId }) {
     return `${s.slice(0, max)}…`;
   }, []);
 
-  const openForms = forms.filter((f) => f.acceptingResponses !== false);
-  const closedForms = forms.filter((f) => f.acceptingResponses === false);
-  const visibleForms = listMode === "closed" ? closedForms : openForms;
+  const orderedForms = useMemo(() => {
+    if (!Array.isArray(forms) || forms.length === 0) return [];
+    const byId = new Map(forms.map((f) => [String(f?.formId || ""), f]));
+    const recent = (recentFormIds || []).map((id) => byId.get(String(id))).filter(Boolean);
+    const used = new Set(recent.map((f) => String(f?.formId || "")));
+    const rest = forms.filter((f) => !used.has(String(f?.formId || "")));
+    return [...recent, ...rest];
+  }, [forms, recentFormIds]);
+  const visibleForms = orderedForms;
   const selectedForm = forms.find((f) => f.formId === selectedFormId) || null;
 
   const handleDownloadCsv = useCallback(() => {
@@ -348,7 +373,6 @@ export default function StatsViewer({ initialFormId }) {
         throw err;
       }
       setAcceptingResponses(false);
-      setListMode("closed");
       void fetchForms();
     } catch (e) {
       console.error(e);
@@ -407,8 +431,6 @@ export default function StatsViewer({ initialFormId }) {
         storageKey={SELECTED_FORM_ID_STORAGE_KEY}
         forms={forms}
         summaries={summaries}
-        listMode={listMode}
-        setListMode={setListMode}
         selectedFormId={selectedFormId}
         selectedForm={selectedForm}
         visibleForms={visibleForms}
@@ -417,6 +439,7 @@ export default function StatsViewer({ initialFormId }) {
         formUrl={formUrl}
         remarkRowsLength={remarkRows.length}
         setSelectedFormId={setSelectedFormId}
+        rememberRecentFormId={rememberRecentFormId}
         setRows={setRows}
         setEmptyDelayDone={setEmptyDelayDone}
         setError={setError}

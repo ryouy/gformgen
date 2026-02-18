@@ -1,14 +1,7 @@
 import { motion } from "framer-motion";
 import { Lock, LogIn } from "lucide-react";
 
-const TAB_LABEL = {
-  stats: "集計",
-  form: "作成",
-};
-
-export default function AuthGate({ tab, onLogin, onGoSettings }) {
-  const label = TAB_LABEL[tab] || "この機能";
-
+export default function AuthGate({ onLogin, onGoSettings }) {
   return (
     <div className="auth-gate" role="region" aria-label="ログインが必要です">
       <motion.div
@@ -21,9 +14,6 @@ export default function AuthGate({ tab, onLogin, onGoSettings }) {
           <Lock size={22} />
         </div>
         <h2 className="auth-gate-title">ログインが必要です</h2>
-        <p className="auth-gate-text">
-          「{label}」を使うには管理者ログインが必要です。
-        </p>
 
         <div className="auth-gate-actions">
           <button

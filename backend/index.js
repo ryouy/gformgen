@@ -93,7 +93,6 @@ const APP_PROP_STATUS_CLOSED = "closed";
 const APP_PROP_OWNER_SUB_KEY = "gformgen_owner_sub";
 const APP_PROP_OWNER_EMAIL_KEY = "gformgen_owner_email";
 const APP_PROP_OWNER_NAME_KEY = "gformgen_owner_name";
-const CLOSED_TITLE_SUFFIX = "（締め切られています）";
 const CLOSED_NOTICE_TITLE = "このフォームは締め切られています。";
 const CLOSED_NOTICE_DESCRIPTION = "回答の受付は終了しました。";
 const APP_PROP_TYPE_FORM_SNAPSHOT = "form_snapshot";
@@ -1362,13 +1361,6 @@ function stripTagsFromTitle(title) {
     .trim();
 }
 
-function ensureClosedSuffix(title) {
-  const t = String(title || "").trim();
-  if (!t) return CLOSED_TITLE_SUFFIX;
-  if (t.includes(CLOSED_TITLE_SUFFIX)) return t;
-  return `${t}${CLOSED_TITLE_SUFFIX}`;
-}
-
 async function migrateFileToAppProperties({ forms, drive, file, authUser }) {
   const formId = file?.id;
   if (!formId) return { migrated: false };
@@ -2238,11 +2230,11 @@ app.post("/api/forms/:formId/close", async (req, res) => {
     const byProps = parseAcceptingResponsesFromAppProperties(appProps);
     // Always proceed best-effort to keep title/items consistent (even when already closed).
 
-    // 互換：旧タグが残っている場合はこのタイミングで除去しつつ、締切文言を追記
+    // 互換：旧タグが残っている場合はこのタイミングで除去（タイトル末尾文言は付けない）
     const current = await forms.forms.get({ formId });
     const currentTitle = String(current?.data?.info?.title || "");
     const baseTitle = stripTagsFromTitle(currentTitle) || currentTitle;
-    const nextTitle = ensureClosedSuffix(baseTitle);
+    const nextTitle = baseTitle;
     const items = Array.isArray(current?.data?.items) ? current.data.items : [];
 
     // IMPORTANT:
@@ -2272,7 +2264,7 @@ app.post("/api/forms/:formId/close", async (req, res) => {
 
     const currentName = String(driveFile?.data?.name || "");
     const baseName = stripTagsFromTitle(currentName) || currentName || baseTitle;
-    const nextName = ensureClosedSuffix(baseName);
+    const nextName = baseName;
 
     /** @type {any[]} */
     const requests = [];

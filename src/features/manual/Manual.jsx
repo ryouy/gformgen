@@ -117,6 +117,10 @@ export default function ManualPage() {
               </li>
             </ul>
             <p style={{ marginTop: 10 }}>入力が終わったら「フォームを作成」を押します。</p>
+            <div className="manual-note" style={{ marginTop: 10 }}>
+              ※ 作成画面で設定する「締切日時」は案内上の目安です。回答受付は自動では止まりません。<br />
+              運用時は、集計画面の管理操作にある <b>「締切」</b> を手動で実行してください。
+            </div>
             <h5 style={{ margin: "12px 0 6px" }}>作成後にできること</h5>
             <ul style={{ marginTop: 8 }}>
               <li>
