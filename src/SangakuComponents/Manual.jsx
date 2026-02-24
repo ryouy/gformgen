@@ -26,7 +26,7 @@ export default function ManualPage() {
                 <b>CSV（Excel用） / PDF（印刷用）</b> で出力できる
               </li>
               <li>
-                フォームを <b>締切済み扱い</b> にしたり、<b>削除（ゴミ箱へ）</b>できる
+                フォームを <b>〆切済み扱い</b> にしたり、<b>削除（ゴミ箱へ）</b>できる
               </li>
               <li>
                 備考（自由記述）がある場合は <b>備考だけを一覧で確認</b>できる
@@ -96,7 +96,7 @@ export default function ManualPage() {
                 <b>開催日時</b>（会合の日時を入力します）
               </li>
               <li>
-                <b>締切日時</b>（自動で入ります。必要があれば変更できます）
+                <b>〆切日時</b>（自動で入ります。必要があれば変更できます）
               </li>
               <li>
                 <b>場所</b>
@@ -163,7 +163,7 @@ export default function ManualPage() {
       },
       {
         id: "s7",
-        title: "7. 締切・削除（管理）",
+        title: "7. 〆切・削除（管理）",
         body: (
           <>
             <p style={{ marginTop: 0 }}>
@@ -171,7 +171,7 @@ export default function ManualPage() {
             </p>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>締切</b>：「締切済み」にします
+                <b>〆切</b>：「〆切済み」にします
               </li>
               <li>
                 <b>削除</b>：

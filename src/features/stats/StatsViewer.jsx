@@ -353,7 +353,7 @@ export default function StatsViewer({ initialFormId }) {
   const handleCloseForm = useCallback(async () => {
     if (!selectedFormId) return;
     if (
-      !window.confirm("このフォームを締切済みにします。よろしいですか？")
+      !window.confirm("このフォームを〆切済みにします。よろしいですか？")
     )
       return;
     try {
@@ -378,10 +378,10 @@ export default function StatsViewer({ initialFormId }) {
       console.error(e);
       if (e?.status === 401) {
         alert(
-          "締切に失敗しました（未ログイン）。\nバックエンドを再起動するとログインが切れるため、ホーム画面からGoogleログインし直してください。"
+          "〆切に失敗しました（未ログイン）。\nバックエンドを再起動するとログインが切れるため、ホーム画面からGoogleログインし直してください。"
         );
       } else {
-        alert(`締切に失敗しました：${e?.message || "unknown error"}`);
+        alert(`〆切に失敗しました：${e?.message || "unknown error"}`);
       }
     }
   }, [selectedFormId, fetchForms]);

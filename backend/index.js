@@ -84,7 +84,7 @@ app.use(requestLogger);
 
 const PORT = 3000;
 const FORM_NAME_TAG = "[gformgen:sangaku]"; // Drive検索で「このアプリが作ったフォーム」を判別するタグ
-const FORM_CLOSED_TAG = "[gformgen:closed]"; // アプリ上の「締切」判定用タグ（Forms APIで受付停止ができないため）
+const FORM_CLOSED_TAG = "[gformgen:closed]"; // アプリ上の「〆切」判定用タグ（Forms APIで受付停止ができないため）
 // NOTE: タイトルにタグを出さないため、今後は Drive の appProperties をメインで使う
 const APP_PROP_APP_KEY = "gformgen_app";
 const APP_PROP_STATUS_KEY = "gformgen_status";
@@ -111,9 +111,17 @@ const SETTINGS_KIND_FORM_DEFAULTS = "form_defaults";
 const APP_PROP_DEFAULT_WEEKS_KEY = "gformgen_default_weeks";
 const APP_PROP_DEFAULT_HOUR_KEY = "gformgen_default_hour";
 const APP_PROP_DEFAULT_MINUTE_KEY = "gformgen_default_minute";
+const APP_PROP_DEFAULT_DURATION_MINUTES_KEY = "gformgen_default_duration_minutes";
+const APP_PROP_DEFAULT_END_HOUR_KEY = "gformgen_default_end_hour";
+const APP_PROP_DEFAULT_END_MINUTE_KEY = "gformgen_default_end_minute";
+const APP_PROP_DEFAULT_DEADLINE_DAYS_BEFORE_KEY = "gformgen_default_deadline_days_before";
 const APP_PROP_THEME_ACCENT_KEY = "gformgen_theme_accent";
 const APP_PROP_THEME_SCOPE_KEY = "gformgen_theme_scope"; // kept for backward compatibility; always "sidebar"
 const APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY = "gformgen_default_participant_name_count";
+const APP_PROP_DEFAULT_PRICE_KEY = "gformgen_default_price";
+const APP_PROP_DEFAULT_MEETING_TITLE_KEY = "gformgen_default_meeting_title";
+const APP_PROP_DEFAULT_PLACE_KEY = "gformgen_default_place";
+const APP_PROP_DEFAULT_HOST_KEY = "gformgen_default_host";
 
 const THEME_SCOPE_ACCENT = "accent";
 const THEME_SCOPE_SIDEBAR = "sidebar";
@@ -145,7 +153,20 @@ function getDefaultScheduleFromProps(appProperties) {
   const weeksOffset = parseIntInRange(props?.[APP_PROP_DEFAULT_WEEKS_KEY], { min: 1, max: 3 }) ?? 1;
   const hour = parseIntInRange(props?.[APP_PROP_DEFAULT_HOUR_KEY], { min: 0, max: 23 }) ?? 15;
   const minute = parseIntInRange(props?.[APP_PROP_DEFAULT_MINUTE_KEY], { min: 0, max: 59 }) ?? 0;
-  return { weeksOffset, hour, minute };
+  const deadlineDaysBefore =
+    parseIntInRange(props?.[APP_PROP_DEFAULT_DEADLINE_DAYS_BEFORE_KEY], { min: 1, max: 14 }) ?? 2;
+  const legacyDurationMinutes =
+    parseIntInRange(props?.[APP_PROP_DEFAULT_DURATION_MINUTES_KEY], { min: 15, max: 480 }) ?? 60;
+  let endHour = parseIntInRange(props?.[APP_PROP_DEFAULT_END_HOUR_KEY], { min: 0, max: 23 });
+  let endMinute = parseIntInRange(props?.[APP_PROP_DEFAULT_END_MINUTE_KEY], { min: 0, max: 59 });
+  if (endMinute != null && endMinute % 15 !== 0) endMinute = null;
+  if (endHour == null || endMinute == null) {
+    const totalStartMinutes = hour * 60 + minute;
+    const totalEndMinutes = totalStartMinutes + legacyDurationMinutes;
+    endHour = Math.floor((totalEndMinutes % (24 * 60)) / 60);
+    endMinute = totalEndMinutes % 60;
+  }
+  return { weeksOffset, hour, minute, endHour, endMinute, deadlineDaysBefore };
 }
 
 function getThemeFromProps(appProperties) {
@@ -159,7 +180,15 @@ function getFormDefaultsFromProps(appProperties) {
   const participantNameCount =
     parseIntInRange(props?.[APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY], { min: 1, max: 20 }) ??
     1;
-  return { participantNameCount };
+  const defaultPrice = parseIntInRange(props?.[APP_PROP_DEFAULT_PRICE_KEY], { min: 0, max: 99999999 }) ?? 3000;
+  const defaultMeetingTitle =
+    String(props?.[APP_PROP_DEFAULT_MEETING_TITLE_KEY] || "").trim() ||
+    "会津産学懇話会 3月定例会";
+  const defaultPlace =
+    String(props?.[APP_PROP_DEFAULT_PLACE_KEY] || "").trim() || "会津若松ワシントンホテル";
+  const defaultHost =
+    String(props?.[APP_PROP_DEFAULT_HOST_KEY] || "").trim() || "会津産学懇話会";
+  return { participantNameCount, defaultPrice, defaultMeetingTitle, defaultPlace, defaultHost };
 }
 
 async function upsertThemeSettings({ drive, authUser, accent, scope }) {
@@ -208,7 +237,15 @@ async function upsertThemeSettings({ drive, authUser, accent, scope }) {
   };
 }
 
-async function upsertFormDefaultsSettings({ drive, authUser, participantNameCount }) {
+async function upsertFormDefaultsSettings({
+  drive,
+  authUser,
+  participantNameCount,
+  defaultPrice,
+  defaultMeetingTitle,
+  defaultPlace,
+  defaultHost,
+}) {
   const sub = String(authUser?.sub || "").trim();
   if (!sub) throw new Error("Missing auth user sub");
   const existing = await findUserSettingsFileOrNull({
@@ -224,6 +261,10 @@ async function upsertFormDefaultsSettings({ drive, authUser, participantNameCoun
     ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
     ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
     [APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY]: String(participantNameCount),
+    [APP_PROP_DEFAULT_PRICE_KEY]: String(defaultPrice),
+    [APP_PROP_DEFAULT_MEETING_TITLE_KEY]: String(defaultMeetingTitle || ""),
+    [APP_PROP_DEFAULT_PLACE_KEY]: String(defaultPlace || ""),
+    [APP_PROP_DEFAULT_HOST_KEY]: String(defaultHost || ""),
   };
 
   if (!existing?.id) {
@@ -273,7 +314,16 @@ async function findUserSettingsFileOrNull({ drive, authUser, kind }) {
   return files?.[0] || null;
 }
 
-async function upsertDefaultScheduleSettings({ drive, authUser, weeksOffset, hour, minute }) {
+async function upsertDefaultScheduleSettings({
+  drive,
+  authUser,
+  weeksOffset,
+  hour,
+  minute,
+  endHour,
+  endMinute,
+  deadlineDaysBefore,
+}) {
   const sub = String(authUser?.sub || "").trim();
   if (!sub) throw new Error("Missing auth user sub");
 
@@ -293,6 +343,9 @@ async function upsertDefaultScheduleSettings({ drive, authUser, weeksOffset, hou
     [APP_PROP_DEFAULT_WEEKS_KEY]: String(weeksOffset),
     [APP_PROP_DEFAULT_HOUR_KEY]: String(hour),
     [APP_PROP_DEFAULT_MINUTE_KEY]: String(minute),
+    [APP_PROP_DEFAULT_END_HOUR_KEY]: String(endHour),
+    [APP_PROP_DEFAULT_END_MINUTE_KEY]: String(endMinute),
+    [APP_PROP_DEFAULT_DEADLINE_DAYS_BEFORE_KEY]: String(deadlineDaysBefore),
   };
 
   if (!existing?.id) {
@@ -929,8 +982,21 @@ app.post("/api/user-settings/default-schedule", async (req, res) => {
       parseIntInRange(req?.body?.weeksOffset, { min: 1, max: 3 }) ?? null;
     const hour = parseIntInRange(req?.body?.hour, { min: 8, max: 20 }) ?? null;
     const minute = parseIntInRange(req?.body?.minute, { min: 0, max: 59 }) ?? null;
+    const endHour = parseIntInRange(req?.body?.endHour, { min: 8, max: 23 }) ?? null;
+    const endMinute = parseIntInRange(req?.body?.endMinute, { min: 0, max: 59 }) ?? null;
+    const deadlineDaysBefore =
+      parseIntInRange(req?.body?.deadlineDaysBefore, { min: 1, max: 14 }) ?? null;
 
-    if (weeksOffset == null || hour == null || minute == null || minute % 15 !== 0) {
+    if (
+      weeksOffset == null ||
+      hour == null ||
+      minute == null ||
+      endHour == null ||
+      endMinute == null ||
+      deadlineDaysBefore == null ||
+      minute % 15 !== 0 ||
+      endMinute % 15 !== 0
+    ) {
       return res.status(400).json({ error: "Invalid settings payload" });
     }
 
@@ -941,6 +1007,9 @@ app.post("/api/user-settings/default-schedule", async (req, res) => {
       weeksOffset,
       hour,
       minute,
+      endHour,
+      endMinute,
+      deadlineDaysBefore,
     });
     return res.json({ ok: true, settings: result.settings });
   } catch (err) {
@@ -1032,7 +1101,15 @@ app.post("/api/user-settings/form-defaults", async (req, res) => {
 
     const participantNameCount =
       parseIntInRange(req?.body?.participantNameCount, { min: 1, max: 20 }) ?? null;
+    const parsedDefaultPrice = parseIntInRange(req?.body?.defaultPrice, { min: 0, max: 99999999 });
+    const defaultPrice = parsedDefaultPrice == null ? 3000 : parsedDefaultPrice;
+    const defaultMeetingTitle = String(req?.body?.defaultMeetingTitle || "").trim();
+    const defaultPlace = String(req?.body?.defaultPlace || "").trim();
+    const defaultHost = String(req?.body?.defaultHost || "").trim();
     if (participantNameCount == null) {
+      return res.status(400).json({ error: "Invalid settings payload" });
+    }
+    if (defaultMeetingTitle.length > 120 || defaultPlace.length > 120 || defaultHost.length > 120) {
       return res.status(400).json({ error: "Invalid settings payload" });
     }
 
@@ -1041,6 +1118,10 @@ app.post("/api/user-settings/form-defaults", async (req, res) => {
       drive,
       authUser,
       participantNameCount,
+      defaultPrice,
+      defaultMeetingTitle,
+      defaultPlace,
+      defaultHost,
     });
     return res.json({ ok: true, settings: result.settings });
   } catch (err) {
@@ -1098,6 +1179,40 @@ const formatDateJP = (isoString, withTime = false) => {
   }
 
   return `${y}年${m}月${day}日（${w}）`;
+};
+
+const formatTimeJP = (isoString) => {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  if (!Number.isFinite(d.getTime())) return "";
+  const timeParts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+  const t = {};
+  for (const p of timeParts) {
+    if (p?.type && p.type !== "literal") t[p.type] = p.value;
+  }
+  const hh = String(t.hour || "").padStart(2, "0");
+  const mm = String(t.minute || "").padStart(2, "0");
+  return `${hh}:${mm}`;
+};
+
+const formatDateTimeRangeJP = (startIso, endIso) => {
+  const start = String(startIso || "").trim();
+  const end = String(endIso || "").trim();
+  if (!start) return "";
+  if (!end) return formatDateJP(start, true);
+
+  const startDate = formatDateJP(start, false);
+  const endDate = formatDateJP(end, false);
+  const startTime = formatTimeJP(start);
+  const endTime = formatTimeJP(end);
+  if (!startDate || !startTime || !endDate || !endTime) return formatDateJP(start, true);
+  if (startDate === endDate) return `${startDate}${startTime}〜${endTime}`;
+  return `${formatDateJP(start, true)}〜${formatDateJP(end, true)}`;
 };
 
 /* =========================
@@ -1262,7 +1377,7 @@ function getAnswerValue(answer) {
 
 function isParticipantNameTitle(title) {
   const t = String(title || "");
-  // 新形式: "氏名（1）" / "参加者名（1）"
+  // 新形式: "氏名（1人目）"（互換で "氏名（1）"/"参加者名（1）" も許容）
   // 旧形式: "氏名"
   // NOTE: 要件にある prefix 判定（例: "参加者名（"）にも将来対応しやすいよう緩めにしている
   return (
@@ -1280,11 +1395,15 @@ function isParticipantRoleTitle(title) {
 
 function parseIndexedFieldNumber(title) {
   const t = String(title || "");
-  // 全角括弧: （1） / 半角: (1)
+  // 全角括弧: （1人目） / （1）, 半角: (1人目) / (1)
+  const m0 = t.match(/（\s*(\d+)\s*人目\s*）/);
+  if (m0?.[1]) return Number(m0[1]);
   const m1 = t.match(/（\s*(\d+)\s*）/);
   if (m1?.[1]) return Number(m1[1]);
-  const m2 = t.match(/\(\s*(\d+)\s*\)/);
+  const m2 = t.match(/\(\s*(\d+)\s*人目\s*\)/);
   if (m2?.[1]) return Number(m2[1]);
+  const m3 = t.match(/\(\s*(\d+)\s*\)/);
+  if (m3?.[1]) return Number(m3[1]);
   return null;
 }
 
@@ -1305,7 +1424,7 @@ function extractGoogleApiError(err) {
 
 function parseAcceptingResponsesFromTitle(title) {
   // NOTE: Google Forms APIでは「回答受付停止」を直接更新できないため、
-  // アプリ側ではタイトルにタグを付けて締切状態を表現する。
+  // アプリ側ではタイトルにタグを付けて〆切状態を表現する。
   const t = String(title || "");
   if (t.includes(FORM_CLOSED_TAG)) return false;
   if (t.includes(FORM_NAME_TAG)) return true;
@@ -1468,8 +1587,10 @@ app.post("/api/forms/create", async (req, res) => {
     const {
       title,
       datetime,
+      endDatetime,
       deadline,
       place,
+      price,
       host,
       participantNameCount,
     } = req.body;
@@ -1478,9 +1599,10 @@ app.post("/api/forms/create", async (req, res) => {
     const safeParticipantNameCount = Number.isFinite(parsedCount)
       ? Math.max(1, Math.min(20, Math.floor(parsedCount)))
       : 1;
+    const safePrice = parseIntInRange(price, { min: 0, max: 99999999 }) ?? 3000;
 
     // ★ Drive / Forms に表示される最終タイトル
-    const baseTitle = title ? `${title} 出席通知書` : "出席通知書";
+    const baseTitle = title ? `${title} 出欠通知書` : "出欠通知書";
     // NOTE: タグはタイトルに出さず、Drive appProperties へ移行
     const formTitle = baseTitle;
 
@@ -1490,9 +1612,13 @@ app.post("/api/forms/create", async (req, res) => {
       // Avoid PII-heavy payloads; keep only high-level fields.
       formTitle,
       hasDatetime: Boolean(datetime),
+      hasEndDatetime: Boolean(endDatetime),
       hasDeadline: Boolean(deadline),
+      hasPrice: price != null,
       participantNameCount: safeParticipantNameCount,
     });
+
+    const formattedMeetingRange = formatDateTimeRangeJP(datetime, endDatetime);
 
     /* =========================
        説明文（通知文）
@@ -1502,17 +1628,17 @@ ${formTitle}
 
 平素より当協会の活動にご理解とご協力を賜り、誠にありがとうございます。
 下記のとおり【${title}】を開催いたします。
-ご出欠につきまして、以下のフォームよりご回答くださいますようお願い申し上げます。
+ご出欠につきまして、以下のフォームよりご回答くださるようお願い申し上げます。
 
 【会合情報】
-・主催者： ${host}
-・日時： ${formatDateJP(datetime, true)}
+・日時： ${formattedMeetingRange}
 ・場所： ${place}
+・参加費（1人あたり）：￥ ${safePrice}
 ・〆切： ${formatDateJP(deadline)}
 
-【お問い合わせ先】
-会津産学懇話会 事務局
-（TEL）23-8511（会津地区経営者協会内）
+【お問合せ先】
+・主催者： ${host} 事務局
+（TEL）0242-23-8511
 `.trim();
 
     const forms = google.forms({ version: "v1", auth: authClient });
@@ -1577,15 +1703,15 @@ ${formTitle}
       },
     });
 
-    // 役職名（n）/ 氏名（n）: 氏名の1人目のみ必須、2人目以降は任意
+    // 役職名（n人目）/ 氏名（n人目）: 氏名の1人目のみ必須、2人目以降は任意
     // 役職名は全て任意（入力負担を増やさない）
     let cursorIndex = 2;
     for (let i = 1; i <= safeParticipantNameCount; i += 1) {
-      // 役職名（i）
+      // 役職名（i人目）
       requests.push({
         createItem: {
           item: {
-            title: `役職名（${i}）`,
+            title: `役職名（${i}人目）`,
             questionItem: {
               question: {
                 required: false,
@@ -1598,11 +1724,11 @@ ${formTitle}
       });
       cursorIndex += 1;
 
-      // 氏名（i）
+      // 氏名（i人目）
       requests.push({
         createItem: {
           item: {
-            title: `氏名（${i}）`,
+            title: `氏名（${i}人目）`,
             questionItem: {
               question: {
                 required: i === 1,
@@ -2196,7 +2322,7 @@ app.get("/api/forms/:formId/info", async (req, res) => {
 });
 
 /* =========================
-   フォーム締切（回答受付停止）
+   フォーム〆切（回答受付停止）
 ========================= */
 app.post("/api/forms/:formId/close", async (req, res) => {
   const { formId } = req.params;
@@ -2221,7 +2347,7 @@ app.post("/api/forms/:formId/close", async (req, res) => {
     if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
 
     // NOTE: Forms APIでは回答受付停止の切り替えが提供されていないため、
-    // Drive appProperties で「締切」状態を表現する（タイトルにタグは出さない）
+    // Drive appProperties で「〆切」状態を表現する（タイトルにタグは出さない）
     const driveFile = await drive.files.get({
       fileId: formId,
       fields: "id,name,appProperties",

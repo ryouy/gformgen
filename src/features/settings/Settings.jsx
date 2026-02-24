@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Box, Button, CircularProgress, MenuItem, Stack, TextField } from "@mui/material";
+import {
+  Box,
+  Button,
+  CircularProgress,
+  MenuItem,
+  Stack,
+  TextField,
+  InputAdornment,
+} from "@mui/material";
 import { ThemeProvider } from "@mui/material/styles";
 import { TimePicker } from "antd";
 import dayjs from "dayjs";
@@ -22,17 +30,6 @@ function normalizeHex(input) {
   return "";
 }
 
-function hexToRgbCsv(hex) {
-  const s = String(hex || "").trim().toLowerCase();
-  const m = s.match(/^#([0-9a-f]{6})$/);
-  if (!m) return null;
-  const n = Number.parseInt(m[1], 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return `${r}, ${g}, ${b}`;
-}
-
 export default function SettingsPage() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -43,6 +40,9 @@ export default function SettingsPage() {
   const [weeksOffset, setWeeksOffset] = useState(1);
   const [hour, setHour] = useState(15);
   const [minute, setMinute] = useState(0);
+  const [endHour, setEndHour] = useState(16);
+  const [endMinute, setEndMinute] = useState(0);
+  const [deadlineDaysBefore, setDeadlineDaysBefore] = useState(2);
 
   const THEME_PRESETS = [
     { label: "グレー", value: "#6b7280" },
@@ -56,13 +56,28 @@ export default function SettingsPage() {
     () => buildMuiTheme({ accent, scope: "sidebar" }),
     [accent]
   );
-  const previewRgb = useMemo(() => hexToRgbCsv(normalizeHex(accent)), [accent]);
 
   const [participantNameCount, setParticipantNameCount] = useState(1);
+  const [defaultPrice, setDefaultPrice] = useState(3000);
+  const [defaultMeetingTitle, setDefaultMeetingTitle] = useState("会津産学懇話会 月定例会");
+  const [defaultPlace, setDefaultPlace] = useState("会津若松ワシントンホテル");
+  const [defaultHost, setDefaultHost] = useState("会津産学懇話会");
 
   const timeValue = useMemo(() => {
     return dayjs().hour(hour).minute(minute).second(0);
   }, [hour, minute]);
+  const endTimeValue = useMemo(() => {
+    return dayjs().hour(endHour).minute(endMinute).second(0);
+  }, [endHour, endMinute]);
+  const scheduleValidationError = useMemo(() => {
+    const startTotal = Number(hour) * 60 + Number(minute);
+    const endTotal = Number(endHour) * 60 + Number(endMinute);
+    if (!Number.isFinite(startTotal) || !Number.isFinite(endTotal)) return "";
+    if (endTotal <= startTotal) {
+      return "終了時刻は開始時刻より後にしてください。";
+    }
+    return "";
+  }, [hour, minute, endHour, endMinute]);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +105,9 @@ export default function SettingsPage() {
           setWeeksOffset(Number(s?.weeksOffset) || 1);
           setHour(Number(s?.hour) || 15);
           setMinute(Number(s?.minute) || 0);
+          setEndHour(Number(s?.endHour) || 16);
+          setEndMinute(Number(s?.endMinute) || 0);
+          setDeadlineDaysBefore(Number(s?.deadlineDaysBefore) || 2);
         }
         if (r2.status === "fulfilled" && r2.value.ok) {
           const data = await r2.value.json().catch(() => ({}));
@@ -100,6 +118,10 @@ export default function SettingsPage() {
           const data = await r3.value.json().catch(() => ({}));
           const s = data?.settings || {};
           setParticipantNameCount(Number(s?.participantNameCount) || 1);
+          setDefaultPrice(Number(s?.defaultPrice) || 3000);
+          setDefaultMeetingTitle(String(s?.defaultMeetingTitle || "会津産学懇話会 月定例会"));
+          setDefaultPlace(String(s?.defaultPlace || "会津若松ワシントンホテル"));
+          setDefaultHost(String(s?.defaultHost || "会津産学懇話会"));
         }
       } catch {
         if (cancelled) return;
@@ -124,13 +146,26 @@ export default function SettingsPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ weeksOffset, hour, minute }),
+          body: JSON.stringify({
+            weeksOffset,
+            hour,
+            minute,
+            endHour,
+            endMinute,
+            deadlineDaysBefore,
+          }),
         }),
         fetch(apiUrl("/user-settings/form-defaults"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ participantNameCount }),
+          body: JSON.stringify({
+            participantNameCount,
+            defaultPrice: Number(defaultPrice) || 0,
+            defaultMeetingTitle,
+            defaultPlace,
+            defaultHost,
+          }),
         }),
         fetch(apiUrl("/user-settings/theme"), {
           method: "POST",
@@ -160,8 +195,8 @@ export default function SettingsPage() {
         return { ok: true, data };
       };
 
-      const a = await check("開催日程", rSchedule);
-      const b = await check("入力人数", rDefaults);
+      await check("開催日程", rSchedule);
+      await check("入力人数", rDefaults);
       const c = await check("テーマ", rTheme);
 
       if (failures.length > 0) {
@@ -212,29 +247,74 @@ export default function SettingsPage() {
             <h3 style={{ margin: "8px 0 12px", color: "var(--app-text)" }}>作成画面の既定値</h3>
             <Box
               sx={{
-                border: "1px solid rgba(148,163,184,0.35)",
-                borderRadius: 2,
-                padding: 2,
-                background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+                border: "1px solid rgba(148,163,184,0.3)",
+                borderRadius: 2.5,
+                padding: 2.25,
+                background: "#fff",
               }}
             >
               <Box
                 sx={{
                   display: "grid",
                   gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
-                  gap: 2,
+                  gap: 2.25,
                   alignItems: "start",
                 }}
               >
-                {/* 開催日程 */}
                 <Box>
-                  <div style={{ fontWeight: 900, color: "var(--app-text)", marginBottom: 10 }}>
-                    開催日程
-                  </div>
-                  <Stack spacing={2}>
+                  
+                  <Stack spacing={2.25}>
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>会合名</div>
+                    <TextField
+                      value={defaultMeetingTitle}
+                      onChange={(e) => setDefaultMeetingTitle(String(e.target.value || ""))}
+                      disabled={loading || savingAll}
+                    />
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>場所</div>
+                    <TextField
+                      value={defaultPlace}
+                      onChange={(e) => setDefaultPlace(String(e.target.value || ""))}
+                      disabled={loading || savingAll}
+                    />
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>主催者名</div>
+                    <TextField
+                      value={defaultHost}
+                      onChange={(e) => setDefaultHost(String(e.target.value || ""))}
+                      disabled={loading || savingAll}
+                    />
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>参加費</div>
+                    <TextField
+                      type="number"
+                      value={defaultPrice}
+                      onChange={(e) => setDefaultPrice(Number(e.target.value) || 0)}
+                      disabled={loading || savingAll}
+                      inputProps={{ min: 0, step: 100 }}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">￥</InputAdornment>,
+                      }}
+                    />
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>参加者の上限人数</div>
                     <TextField
                       select
-                      label="日付（何週間後）"
+                      value={participantNameCount}
+                      onChange={(e) => setParticipantNameCount(Number(e.target.value) || 1)}
+                      disabled={loading || savingAll}
+                    >
+                      {Array.from({ length: 5 }, (_, i) => i + 1).map((n) => (
+                        <MenuItem key={n} value={n}>
+                          {n} 人
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Stack>
+                </Box>
+
+                <Box>
+                  
+                  <Stack spacing={2.25}>
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>開催日程</div>
+                    <TextField
+                      select
                       value={weeksOffset}
                       onChange={(e) => setWeeksOffset(Number(e.target.value))}
                       disabled={loading || savingAll}
@@ -243,57 +323,70 @@ export default function SettingsPage() {
                       <MenuItem value={2}>本日 + 2週間</MenuItem>
                       <MenuItem value={3}>本日 + 3週間</MenuItem>
                     </TextField>
-        
-        <div>
-                      <div style={{ fontWeight: 800, marginBottom: 6, color: "var(--app-text)" }}>
-                        時刻
-                      </div>
-                      <TimePicker
-                        locale={locale}
-                        value={timeValue}
-                        format="HH:mm"
-                        minuteStep={15}
-                        hideDisabledOptions
-                        showNow={false}
-                        showSecond={false}
-                        disabled={loading || savingAll}
-                        disabledTime={() => ({
-                          disabledHours: () =>
-                            Array.from({ length: 24 }, (_, i) => i).filter((h) => h < 8 || h > 20),
-                          disabledMinutes: () =>
-                            Array.from({ length: 60 }, (_, i) => i).filter((m) => m % 15 !== 0),
-                        })}
-                        onChange={(t) => {
-                          if (!t) return;
-                          setHour(t.hour());
-                          setMinute(t.minute());
-                        }}
-                        style={{ width: "100%", height: 44 }}
-                      />
-                    </div>
-                  </Stack>
-                </Box>
-
-                {/* 入力人数 */}
-                <Box>
-                  <div style={{ fontWeight: 900, color: "var(--app-text)", marginBottom: 10 }}>
-                    入力人数
-        </div>
-                  <Stack spacing={2}>
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>開始時刻</div>
+                    <TimePicker
+                      locale={locale}
+                      value={timeValue}
+                      format="HH:mm"
+                      minuteStep={15}
+                      hideDisabledOptions
+                      showNow={false}
+                      showSecond={false}
+                      disabled={loading || savingAll}
+                      disabledTime={() => ({
+                        disabledHours: () =>
+                          Array.from({ length: 24 }, (_, i) => i).filter((h) => h < 8 || h > 20),
+                        disabledMinutes: () =>
+                          Array.from({ length: 60 }, (_, i) => i).filter((m) => m % 15 !== 0),
+                      })}
+                      onChange={(t) => {
+                        if (!t) return;
+                        setHour(t.hour());
+                        setMinute(t.minute());
+                      }}
+                      style={{ width: "100%", height: 44 }}
+                    />
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>終了時刻</div>
+                    <TimePicker
+                      locale={locale}
+                      value={endTimeValue}
+                      format="HH:mm"
+                      minuteStep={15}
+                      hideDisabledOptions
+                      showNow={false}
+                      showSecond={false}
+                      disabled={loading || savingAll}
+                      disabledTime={() => ({
+                        disabledHours: () =>
+                          Array.from({ length: 24 }, (_, i) => i).filter((h) => h < 8 || h > 23),
+                        disabledMinutes: () =>
+                          Array.from({ length: 60 }, (_, i) => i).filter((m) => m % 15 !== 0),
+                      })}
+                      onChange={(t) => {
+                        if (!t) return;
+                        setEndHour(t.hour());
+                        setEndMinute(t.minute());
+                      }}
+                      style={{ width: "100%", height: 44 }}
+                    />
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>申込締切</div>
                     <TextField
                       select
-                      label="参加者名の入力人数（1回答あたり）"
-                      value={participantNameCount}
-                      onChange={(e) => setParticipantNameCount(Number(e.target.value) || 1)}
+                      value={deadlineDaysBefore}
+                      onChange={(e) => setDeadlineDaysBefore(Number(e.target.value) || 2)}
                       disabled={loading || savingAll}
                     >
-                      {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
-                        <MenuItem key={n} value={n}>
-                          {n} 人分
+                      {Array.from({ length: 14 }, (_, i) => i + 1).map((d) => (
+                        <MenuItem key={d} value={d}>
+                          開催日 - {d}日前
                         </MenuItem>
                       ))}
                     </TextField>
-
+                    {scheduleValidationError && (
+                      <div style={{ color: "#b91c1c", fontWeight: 700 }}>
+                        {scheduleValidationError}
+                      </div>
+                    )}
                   </Stack>
                 </Box>
               </Box>
@@ -345,52 +438,35 @@ export default function SettingsPage() {
 
               <Box
                 sx={{
-                  border: "1px solid rgba(148,163,184,0.35)",
+                  border: "1px solid rgba(148,163,184,0.24)",
                   borderRadius: 2,
                   padding: "10px 12px",
-                  background: "var(--panel-bg)",
+                  background: "#fff",
                 }}
               >
-                <div style={{ fontWeight: 900, marginBottom: 10, color: "var(--app-text)" }}>
-                  プレビュー
-                </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                  <span
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "6px 10px",
-                      borderRadius: 9999,
-                      border: "1px solid rgba(148,163,184,0.45)",
-                      background: "rgba(255,255,255,0.65)",
-                      fontWeight: 900,
-                      color: "var(--app-text)",
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 9999,
-                        background: accent,
-                        boxShadow: previewRgb
-                          ? `0 0 0 3px rgba(${previewRgb}, 0.12)`
-                          : "0 0 0 3px rgba(148,163,184, 0.18)",
-                      }}
-                    />
-                    {THEME_PRESETS.find((p) => p.value === accent)?.label || "カラー"}
-                  </span>
-
-                  <ThemeProvider theme={previewMuiTheme}>
-                    <Button variant="contained" size="small" disableElevation>
-                      主ボタン
-                    </Button>
-                    <Button variant="outlined" size="small">
-                      サブ
-                    </Button>
-                  </ThemeProvider>
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: "var(--app-text)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    minHeight: 42,
+                    flexWrap: "nowrap",
+                    overflowX: "auto",
+                  }}
+                >
+                  <span style={{ flex: "0 0 auto" }}>プレビュー</span>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flex: "0 0 auto" }}>
+                    <ThemeProvider theme={previewMuiTheme}>
+                      <Button variant="contained" size="small" disableElevation>
+                        ボタン
+                      </Button>
+                      <Button variant="outlined" size="small">
+                        タブ
+                      </Button>
+                    </ThemeProvider>
+                  </div>
                 </div>
               </Box>
             </Box>
@@ -407,7 +483,7 @@ export default function SettingsPage() {
             <Button
               variant="contained"
               onClick={onSaveAll}
-              disabled={loading || savingAll}
+              disabled={loading || savingAll || Boolean(scheduleValidationError)}
               style={{ minWidth: 160 }}
             >
               {savingAll ? "保存中…" : "保存"}

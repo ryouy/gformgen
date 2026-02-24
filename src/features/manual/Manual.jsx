@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { useMemo, useState } from "react";
+import { Box, MenuItem, TextField } from "@mui/material";
 
 export default function ManualPage() {
   const sections = useMemo(
@@ -26,7 +26,7 @@ export default function ManualPage() {
                 <b>CSV（Excel用） / PDF（印刷用）</b> で出力できる
               </li>
               <li>
-                フォームを <b>締切済み扱い</b> にしたり、<b>削除（ゴミ箱へ）</b>できる
+                フォームを <b>〆切済み扱い</b> にしたり、<b>削除（ゴミ箱へ）</b>できる
               </li>
               <li>
                 備考（自由記述）がある場合は <b>備考だけを一覧で確認</b>できる
@@ -93,16 +93,22 @@ export default function ManualPage() {
                 <b>会合名</b>（例：「産学懇話会 10月定例会」）
               </li>
               <li>
-                <b>開催日時</b>（会合の日時を入力します）
+                <b>開催日時（開始）</b>（会合の開始日時を入力します）
               </li>
               <li>
-                <b>締切日時</b>（自動で入ります。必要があれば変更できます）
+                <b>終了時刻</b>（終了は時刻のみ指定します）
+              </li>
+              <li>
+                <b>〆切日</b>（開催日から何日前かの設定をもとに自動入力されます）
               </li>
               <li>
                 <b>場所</b>
               </li>
               <li>
                 <b>主催者名</b>
+              </li>
+              <li>
+                <b>参加費（1人あたり）</b>（円で入力）
               </li>
               <li>
                 <b>参加者名の入力人数（1回答あたり）</b>
@@ -118,8 +124,11 @@ export default function ManualPage() {
             </ul>
             <p style={{ marginTop: 10 }}>入力が終わったら「フォームを作成」を押します。</p>
             <div className="manual-note" style={{ marginTop: 10 }}>
-              ※ 作成画面で設定する「締切日時」は案内上の目安です。回答受付は自動では止まりません。<br />
-              運用時は、集計画面の管理操作にある <b>「締切」</b> を手動で実行してください。
+              ※ 作成画面で設定する「〆切日」は案内上の目安です。回答受付は自動では止まりません。<br />
+              運用時は、集計画面の管理操作にある <b>「〆切」</b> を手動で実行してください。
+            </div>
+            <div className="manual-note" style={{ marginTop: 10 }}>
+              ※ 入力時に、<b>終了時刻は開始日時より後</b>、かつ <b>〆切日は開催日より前</b> でないと作成できません。
             </div>
             <h5 style={{ margin: "12px 0 6px" }}>作成後にできること</h5>
             <ul style={{ marginTop: 8 }}>
@@ -172,7 +181,7 @@ export default function ManualPage() {
       },
       {
         id: "s7",
-        title: "7. 締切・削除（管理）",
+        title: "7. 〆切・削除（管理）",
         body: (
           <>
             <p style={{ marginTop: 0 }}>
@@ -180,14 +189,14 @@ export default function ManualPage() {
             </p>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>締切</b>：「締切済み」にします。
+                <b>〆切</b>：「〆切済み」にします。
                 <div
                   style={{
                     color: "color-mix(in srgb, var(--app-text) 65%, transparent)",
                     fontWeight: 800,
                   }}
                 >
-                  締切時はタイトルに「（締め切られています）」が付き、回答受付用の設問は非表示になります。
+                  〆切時はタイトルに「（締め切られています）」が付き、回答受付用の設問は非表示になります。
                 </div>
               </li>
               <li>
@@ -270,7 +279,8 @@ export default function ManualPage() {
           <>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>作成画面の既定値</b>：開催日程（何週間後 + 時刻）と、参加者名の入力人数を変更できます。
+                <b>作成画面の既定値</b>：会合名 / 開催日（本日+何週間後） / 開始時刻 / 終了時刻 /
+                〆切日（開催日-何日前） / 場所 / 主催者名 / 参加者上限人数 / 参加費 を設定できます。
               </li>
               <li>
                 <b>テーマカラー</b>：アプリ全体のアクセント色（ボタンや選択状態の色）を変更できます。
@@ -324,59 +334,47 @@ export default function ManualPage() {
     [],
   );
 
-  const [selectedId, setSelectedId] = useState(sections[0]?.id);
+  const [selectedId, setSelectedId] = useState(sections[0]?.id || "");
   const selected = sections.find((s) => s.id === selectedId) || sections[0];
-  const detailRef = useRef(null);
-
-  useEffect(() => {
-    // 章カードを選んだら説明へスクロール（視線誘導）
-    if (!detailRef.current) return;
-    const el = detailRef.current;
-    requestAnimationFrame(() => {
-      try {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-      } catch {
-        // ignore
-      }
-    });
-  }, [selectedId]);
 
   return (
     <div style={{ maxWidth: 980, margin: "0 auto" }}>
       <h2 style={{ marginTop: 0, color: "var(--app-text)" }}>説明書</h2>
+      <p style={{ margin: "0 0 12px", color: "color-mix(in srgb, var(--app-text) 70%, transparent)" }}>
+        
+      </p>
+      <Box sx={{ mb: 2 }}>
+        <TextField
+          select
+          fullWidth
+          value={selectedId}
+          onChange={(e) => setSelectedId(String(e.target.value || ""))}
+          SelectProps={{
+            displayEmpty: true,
+            renderValue: (v) => {
+              if (!v) {
+                return (
+                  <span style={{ color: "#64748b", fontWeight: 600 }}>
+                    項目を選択してください
+                  </span>
+                );
+              }
+              const cur = sections.find((s) => s.id === v);
+              return cur?.title || "";
+            },
+          }}
+        >
+          {sections.map((s) => (
+            <MenuItem key={s.id} value={s.id}>
+              {s.title}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Box>
 
-      <div className="manual-grid" role="list" aria-label="説明書の章">
-        {sections.map((s) => {
-          const active = s.id === selectedId;
-          return (
-            <button
-              key={s.id}
-              type="button"
-              className={`manual-card ${active ? "is-active" : ""}`}
-              onClick={() => setSelectedId(s.id)}
-              role="listitem"
-              aria-current={active ? "true" : undefined}
-            >
-              <div className="manual-card-title">{s.title}</div>
-              <div className="manual-card-hint">説明を見る</div>
-            </button>
-          );
-        })}
-      </div>
-
-      <div ref={detailRef} />
-      <motion.div
-        key={selected?.id}
-        className="manual-detail"
-        initial={{ opacity: 0, y: 8, scale: 0.995 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.18, ease: "easeOut" }}
-        role="region"
-        aria-label={selected?.title || "説明書本文"}
-      >
-        <div className="manual-bubble-title">{selected?.title}</div>
+      <div className="manual-detail" role="region" aria-label={selected?.title || "説明書本文"}>
         <div className="manual-bubble-body">{selected?.body}</div>
-      </motion.div>
+      </div>
     </div>
   );
 }

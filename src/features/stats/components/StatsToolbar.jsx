@@ -66,8 +66,21 @@ export default function StatsToolbar({
               void fetchFormInfo(id);
               void fetchRows(id);
             }}
-            label="フォーム"
             size="small"
+            SelectProps={{
+              displayEmpty: true,
+              renderValue: (value) => {
+                if (!value) {
+                  return (
+                    <span style={{ color: "rgba(100,116,139,0.95)", fontWeight: 600 }}>
+                      フォームを選択してください
+                    </span>
+                  );
+                }
+                const selected = visibleForms.find((f) => f.formId === value);
+                return normalizeTitle(selected?.title || "");
+              },
+            }}
             sx={{
               width: { xs: "92vw", sm: 630 },
               minWidth: { xs: 220, sm: 480 },
@@ -89,7 +102,7 @@ export default function StatsToolbar({
             }}
           >
             {visibleForms.map((option) => {
-              const statusText = option?.acceptingResponses === false ? "締切済み" : "集計中";
+              const statusText = option?.acceptingResponses === false ? "〆切済み" : "集計中";
               const title = normalizeTitle(option?.title);
               const isClosed = option?.acceptingResponses === false;
               return (
@@ -258,7 +271,7 @@ export default function StatsToolbar({
                 style={{ opacity: acceptingResponses === false ? 0.55 : 1 }}
               >
                 <Lock size={16} />
-                <span className="stats-action-chip-label">締切</span>
+                <span className="stats-action-chip-label">〆切</span>
               </button>
               <button
                 type="button"

@@ -1,14 +1,13 @@
 // src/SangakuComponents/FormEditor.jsx
-import { useEffect, useRef, useState } from "react";
-import { Stack, TextField, Button, Box, MenuItem } from "@mui/material";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Stack, TextField, Button, Box, MenuItem, InputAdornment } from "@mui/material";
 import dayjs from "dayjs";
 import { QRCodeCanvas } from "qrcode.react";
 
 import DateTimeInput from "./DateTimeInput";
+import EndDateTimeInput from "./EndDateTimeInput";
 import DeadDateTimeInput from "./DeadDateTimeInput";
 import { apiUrl } from "../../lib/apiBase";
-
-const DEADLINE_DAYS_BEFORE = 2; // ← 締切は◯日前
 
 export default function FormEditor({
   onFormCreated,
@@ -16,59 +15,95 @@ export default function FormEditor({
   const dirtyRef = useRef(false);
   const participantDirtyRef = useRef(false);
 
-  const buildDefaultSchedule = ({ weeksOffset = 1, hour = 15, minute = 0 } = {}) => {
+  const buildEndDateTime = (start, endHour, endMinute) => {
+    const h = Number(endHour);
+    const m = Number(endMinute);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return start.add(1, "hour");
+    return start.hour(h).minute(m).second(0);
+  };
+
+  const buildDefaultSchedule = ({
+    weeksOffset = 1,
+    hour = 15,
+    minute = 0,
+    endHour = 16,
+    endMinute = 0,
+    deadlineDaysBefore = 2,
+  } = {}) => {
     const dt = dayjs()
       .add(Number(weeksOffset) || 1, "week")
       .hour(Number(hour) || 15)
       .minute(Number(minute) || 0)
       .second(0);
+    const end = buildEndDateTime(dt, endHour, endMinute);
     const dl = dt
-      .subtract(DEADLINE_DAYS_BEFORE, "day")
+      .subtract(deadlineDaysBefore, "day")
       .hour(17)
       .minute(0)
       .second(0);
-    return { datetime: dt, deadline: dl };
+    return { datetime: dt, endDatetime: end, deadline: dl };
   };
 
   const buildDefaultMeetingTitle = () => {
     const nextMonth = dayjs().add(1, "month").format("M");
-    return `会津産学懇話会　${nextMonth}月定例会`;
+    return `会津産学懇話会 ${nextMonth}月定例会`;
   };
 
   const initialSchedule = buildDefaultSchedule();
   const [formData, setFormData] = useState({
     title: buildDefaultMeetingTitle(),
     datetime: initialSchedule.datetime,
+    endDatetime: initialSchedule.endDatetime,
     deadline: initialSchedule.deadline,
     place: "会津若松ワシントンホテル",
+    price: 3000,
     host: "会津産学懇話会",
     participantNameCount: 1,
   });
+  const [defaultEndHour, setDefaultEndHour] = useState(initialSchedule.endDatetime.hour());
+  const [defaultEndMinute, setDefaultEndMinute] = useState(initialSchedule.endDatetime.minute());
+  const [defaultDeadlineDaysBefore, setDefaultDeadlineDaysBefore] = useState(2);
 
   const [formUrl, setFormUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const dateTimeValidationError = useMemo(() => {
+    if (!formData.datetime) return "開始日時を選択してください。";
+    if (!formData.endDatetime) return "終了日時を選択してください。";
+    if (!formData.deadline) return "〆切日を選択してください。";
+    if (!formData.deadline.isBefore(formData.datetime, "day")) {
+      return "〆切日は開催日より前にしてください。";
+    }
+    if (!formData.endDatetime.isAfter(formData.datetime)) {
+      return "終了日時は開始日時より後にしてください（時刻・日付ともに）。";
+    }
+    return "";
+  }, [formData.datetime, formData.endDatetime, formData.deadline]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    if (name === "participantNameCount") participantDirtyRef.current = true;
+    if (["participantNameCount", "price", "title", "place", "host"].includes(name)) {
+      participantDirtyRef.current = true;
+    }
     setFormData({ ...formData, [name]: value });
   };
 
-  /** 開催日時変更 → 締切自動更新 */
+  /** 開催日時変更 → 〆切自動更新 */
   const handleDateTimeChange = (val) => {
     if (!val) return;
     dirtyRef.current = true;
 
     const autoDeadline = val
-      .subtract(DEADLINE_DAYS_BEFORE, "day")
+      .subtract(defaultDeadlineDaysBefore, "day")
       .hour(17)
       .minute(0)
       .second(0);
+    const autoEndDatetime = buildEndDateTime(val, defaultEndHour, defaultEndMinute);
 
     setFormData({
       ...formData,
       datetime: val,
+      endDatetime: autoEndDatetime,
       deadline: autoDeadline,
     });
   };
@@ -91,10 +126,17 @@ export default function FormEditor({
               weeksOffset: s.weeksOffset,
               hour: s.hour,
               minute: s.minute,
+              endHour: s.endHour,
+              endMinute: s.endMinute,
+              deadlineDaysBefore: s.deadlineDaysBefore,
             });
+            setDefaultEndHour(Number(s?.endHour) || next.endDatetime.hour());
+            setDefaultEndMinute(Number(s?.endMinute) || next.endDatetime.minute());
+            setDefaultDeadlineDaysBefore(Number(s?.deadlineDaysBefore) || 2);
             setFormData((prev) => ({
               ...prev,
               datetime: next.datetime,
+              endDatetime: next.endDatetime,
               deadline: next.deadline,
             }));
           }
@@ -105,7 +147,18 @@ export default function FormEditor({
           const s = data?.settings || {};
           if (!cancelled && !participantDirtyRef.current) {
             const n = Number(s?.participantNameCount) || 1;
-            setFormData((prev) => ({ ...prev, participantNameCount: n }));
+            const p = Number(s?.defaultPrice);
+            const t = String(s?.defaultMeetingTitle || "").trim();
+            const place = String(s?.defaultPlace || "").trim();
+            const host = String(s?.defaultHost || "").trim();
+            setFormData((prev) => ({
+              ...prev,
+              title: t || prev.title,
+              place: place || prev.place,
+              host: host || prev.host,
+              participantNameCount: n,
+              price: Number.isFinite(p) ? p : 3000,
+            }));
           }
         }
       } catch {
@@ -134,8 +187,10 @@ export default function FormEditor({
         body: JSON.stringify({
           title: formData.title,
           datetime: formData.datetime ? formData.datetime.toISOString() : null,
+          endDatetime: formData.endDatetime ? formData.endDatetime.toISOString() : null,
           deadline: formData.deadline ? formData.deadline.toISOString() : null,
           place: formData.place,
+          price: Number(formData.price) || 0,
           host: formData.host,
           participantNameCount: Number(formData.participantNameCount) || 1,
         }),
@@ -167,7 +222,7 @@ export default function FormEditor({
 
   return (
     <div className="form-grid-wrapper">
-      <h2>フォームに必要な情報を入力してください</h2>
+      <h2>情報を入力してください</h2>
 
       <div className="form-grid mui-form">
         <Stack spacing={2}>
@@ -184,11 +239,26 @@ export default function FormEditor({
               value={formData.datetime}
               onChange={handleDateTimeChange}
             />
+            <EndDateTimeInput
+              value={formData.endDatetime}
+              onChange={(val) => {
+                if (!val) {
+                  setFormData({ ...formData, endDatetime: null });
+                  return;
+                }
+                const base = formData.datetime || formData.endDatetime || dayjs();
+                const nextEnd = base.hour(val.hour()).minute(val.minute()).second(0);
+                setFormData({ ...formData, endDatetime: nextEnd });
+              }}
+            />
             <DeadDateTimeInput
               value={formData.deadline}
               onChange={(val) => setFormData({ ...formData, deadline: val })}
             />
           </Box>
+          {dateTimeValidationError && (
+            <p style={{ color: "red", margin: 0 }}>{dateTimeValidationError}</p>
+          )}
 
           <TextField
             label="場所"
@@ -196,6 +266,18 @@ export default function FormEditor({
             value={formData.place}
             onChange={handleChange}
             fullWidth
+          />
+          <TextField
+            label="参加費（1人あたり）"
+            name="price"
+            type="number"
+            value={formData.price}
+            onChange={handleChange}
+            fullWidth
+            inputProps={{ min: 0, step: 100 }}
+            InputProps={{
+              startAdornment: <InputAdornment position="start">￥</InputAdornment>,
+            }}
           />
 
           <TextField
@@ -208,7 +290,7 @@ export default function FormEditor({
 
           <TextField
             select
-            label="参加者名の入力人数（1回答あたり）"
+            label="参加者の上限入力人数"
             name="participantNameCount"
             value={formData.participantNameCount}
             onChange={handleChange}
@@ -216,7 +298,7 @@ export default function FormEditor({
           >
             {[1, 2, 3, 4, 5].map((n) => (
               <MenuItem key={n} value={n}>
-                {n} 人分
+                {n} 人
               </MenuItem>
             ))}
           </TextField>
@@ -232,7 +314,7 @@ export default function FormEditor({
                 variant="contained"
                 size="large"
                 onClick={handleCreate}
-                disabled={loading}
+                disabled={loading || Boolean(dateTimeValidationError)}
                 disableElevation
                 className="action-btn action-primary"
               >

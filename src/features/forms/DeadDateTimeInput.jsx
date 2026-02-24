@@ -10,11 +10,11 @@ export default function DeadDateTimeInput({ value, onChange }) {
   return (
     <DatePicker
       locale={locale}
-      format="締切：YYYY/MM/DD（ddd）"
+      format="〆切日：YYYY/MM/DD（ddd）"
       value={value}
       onChange={onChange}
       style={{ width: "100%" }}
-      placeholder="締切日時を選択"
+      placeholder="〆切日時を選択"
     />
   );
 }
