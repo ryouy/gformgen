@@ -1,10 +1,10 @@
 import { MenuItem, TextField } from "@mui/material";
 import {
   Download,
-  FileText,
-  Link as LinkIcon,
+  Eye,
   Lock,
   MessageSquareText,
+  Pencil,
   QrCode,
   Trash2,
 } from "lucide-react";
@@ -17,6 +17,7 @@ export default function StatsToolbar({
   visibleForms,
   acceptingResponses,
   formUrl,
+  editUrl,
   remarkRowsLength,
   // actions
   setSelectedFormId,
@@ -25,6 +26,7 @@ export default function StatsToolbar({
   setEmptyDelayDone,
   setError,
   setFormUrl,
+  setEditUrl,
   setAcceptingResponses,
   setRemarksOpen,
   setQrOpen,
@@ -55,6 +57,7 @@ export default function StatsToolbar({
               if (id) rememberRecentFormId?.(id);
               setError(null);
               setFormUrl("");
+              setEditUrl("");
               setAcceptingResponses(null);
               if (!id) {
                 setRows([]);
@@ -78,12 +81,61 @@ export default function StatsToolbar({
                   );
                 }
                 const selected = visibleForms.find((f) => f.formId === value);
-                return normalizeTitle(selected?.title || "");
+                const isClosed = selected?.acceptingResponses === false;
+                const statusText = isClosed ? "〆切済み" : "集計中";
+                return (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      minWidth: 0,
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        borderRadius: 9999,
+                        padding: "2px 8px",
+                        fontSize: "0.72rem",
+                        fontWeight: 900,
+                        whiteSpace: "nowrap",
+                        color: isClosed
+                          ? "color-mix(in srgb, var(--app-text) 70%, transparent)"
+                          : "var(--accent2)",
+                        background: isClosed
+                          ? "rgba(148,163,184,0.16)"
+                          : "rgba(var(--accent-rgb),0.14)",
+                        border: isClosed
+                          ? "1px solid rgba(148,163,184,0.36)"
+                          : "1px solid rgba(var(--accent-rgb),0.28)",
+                      }}
+                    >
+                      {statusText}
+                    </span>
+                    <span
+                      style={{
+                        minWidth: 0,
+                        fontWeight: 700,
+                        color: "var(--app-text)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        display: "inline-block",
+                        maxWidth: "100%",
+                      }}
+                    >
+                      {normalizeTitle(selected?.title || "")}
+                    </span>
+                  </span>
+                );
               },
             }}
             sx={{
-              width: { xs: "92vw", sm: 630 },
-              minWidth: { xs: 220, sm: 480 },
+              width: { xs: "100%", sm: 630 },
+              minWidth: { xs: 0, sm: 480 },
+              maxWidth: "100%",
               "& .MuiOutlinedInput-root": {
                 borderRadius: "14px",
                 background: "var(--panel-bg)",
@@ -142,6 +194,11 @@ export default function StatsToolbar({
                         fontWeight: 700,
                         color: "var(--app-text)",
                         minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        display: "inline-block",
+                        maxWidth: "100%",
                       }}
                     >
                       {title}
@@ -173,7 +230,7 @@ export default function StatsToolbar({
                     color: "inherit",
                   }}
                 >
-                  <LinkIcon size={18} />
+                  <Eye size={18} />
                 </a>
               ) : (
                 <button
@@ -194,10 +251,55 @@ export default function StatsToolbar({
                     padding: 0,
                   }}
                 >
-                  <LinkIcon size={18} />
+                  <Eye size={18} />
                 </button>
               )}
-              <span className="tooltip-bubble">{formUrl ? "フォームを開く" : "リンク準備中…"}</span>
+              <span className="tooltip-bubble">{formUrl ? "フォームを確認" : "リンク準備中…"}</span>
+            </span>
+
+            <span className="tooltip-wrap">
+              {editUrl ? (
+                <a
+                  href={editUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    border: "1px solid rgba(148,163,184,0.6)",
+                    background: "#fff",
+                    color: "inherit",
+                  }}
+                >
+                  <Pencil size={18} />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    border: "1px solid rgba(148,163,184,0.6)",
+                    background: "#fff",
+                    color: "inherit",
+                    opacity: 0.55,
+                    cursor: "not-allowed",
+                    padding: 0,
+                  }}
+                >
+                  <Pencil size={18} />
+                </button>
+              )}
+              <span className="tooltip-bubble">{editUrl ? "フォームを編集" : "編集準備中…"}</span>
             </span>
 
             <span className="tooltip-wrap">
@@ -225,7 +327,7 @@ export default function StatsToolbar({
               >
                 <QrCode size={18} />
               </button>
-              <span className="tooltip-bubble">{formUrl ? "バーコードを表示" : "QR準備中…"}</span>
+              <span className="tooltip-bubble">{formUrl ? "二次元バーコードを表示" : "QR準備中…"}</span>
             </span>
           </div>
         ) : (

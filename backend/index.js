@@ -103,10 +103,12 @@ const FORM_SNAPSHOT_SCHEMA_VERSION = 1;
 // This works with the existing minimal scope: `drive.file` (only app-created files are accessible).
 const APP_PROP_TYPE_KEY = "gformgen_type";
 const APP_PROP_TYPE_USER_SETTINGS = "user_settings";
+const APP_PROP_TYPE_TOOL_FOLDER = "tool_folder";
 const APP_PROP_SETTINGS_KIND_KEY = "gformgen_settings_kind";
 const SETTINGS_KIND_DEFAULT_SCHEDULE = "default_schedule";
 const SETTINGS_KIND_THEME = "theme";
 const SETTINGS_KIND_FORM_DEFAULTS = "form_defaults";
+const DRIVE_TOOL_FOLDER_NAME = "フォーム管理ツール";
 
 const APP_PROP_DEFAULT_WEEKS_KEY = "gformgen_default_weeks";
 const APP_PROP_DEFAULT_HOUR_KEY = "gformgen_default_hour";
@@ -183,7 +185,7 @@ function getFormDefaultsFromProps(appProperties) {
   const defaultPrice = parseIntInRange(props?.[APP_PROP_DEFAULT_PRICE_KEY], { min: 0, max: 99999999 }) ?? 3000;
   const defaultMeetingTitle =
     String(props?.[APP_PROP_DEFAULT_MEETING_TITLE_KEY] || "").trim() ||
-    "会津産学懇話会 3月定例会";
+    "会津産学懇話会 月定例会";
   const defaultPlace =
     String(props?.[APP_PROP_DEFAULT_PLACE_KEY] || "").trim() || "会津若松ワシントンホテル";
   const defaultHost =
@@ -194,6 +196,7 @@ function getFormDefaultsFromProps(appProperties) {
 async function upsertThemeSettings({ drive, authUser, accent, scope }) {
   const sub = String(authUser?.sub || "").trim();
   if (!sub) throw new Error("Missing auth user sub");
+  const toolFolderId = await ensureToolFolderId({ drive, authUser });
   const existing = await findUserSettingsFileOrNull({
     drive,
     authUser,
@@ -216,6 +219,7 @@ async function upsertThemeSettings({ drive, authUser, accent, scope }) {
         name: "gformgen_user_settings_theme.json",
         mimeType: "application/json",
         appProperties: patch,
+        parents: toolFolderId ? [toolFolderId] : undefined,
       },
       fields: "id,appProperties",
     });
@@ -231,6 +235,9 @@ async function upsertThemeSettings({ drive, authUser, accent, scope }) {
     requestBody: { appProperties: nextProps },
     fields: "id,appProperties",
   });
+  if (toolFolderId && existing?.id) {
+    await moveFileIntoFolderIfNeeded({ drive, fileId: existing.id, folderId: toolFolderId });
+  }
   return {
     fileId: updated?.data?.id || existing.id,
     settings: getThemeFromProps(updated?.data?.appProperties || nextProps),
@@ -248,6 +255,7 @@ async function upsertFormDefaultsSettings({
 }) {
   const sub = String(authUser?.sub || "").trim();
   if (!sub) throw new Error("Missing auth user sub");
+  const toolFolderId = await ensureToolFolderId({ drive, authUser });
   const existing = await findUserSettingsFileOrNull({
     drive,
     authUser,
@@ -273,6 +281,7 @@ async function upsertFormDefaultsSettings({
         name: "gformgen_user_settings_form_defaults.json",
         mimeType: "application/json",
         appProperties: patch,
+        parents: toolFolderId ? [toolFolderId] : undefined,
       },
       fields: "id,appProperties",
     });
@@ -288,6 +297,9 @@ async function upsertFormDefaultsSettings({
     requestBody: { appProperties: nextProps },
     fields: "id,appProperties",
   });
+  if (toolFolderId && existing?.id) {
+    await moveFileIntoFolderIfNeeded({ drive, fileId: existing.id, folderId: toolFolderId });
+  }
   return {
     fileId: updated?.data?.id || existing.id,
     settings: getFormDefaultsFromProps(updated?.data?.appProperties || nextProps),
@@ -326,6 +338,7 @@ async function upsertDefaultScheduleSettings({
 }) {
   const sub = String(authUser?.sub || "").trim();
   if (!sub) throw new Error("Missing auth user sub");
+  const toolFolderId = await ensureToolFolderId({ drive, authUser });
 
   const existing = await findUserSettingsFileOrNull({
     drive,
@@ -354,6 +367,7 @@ async function upsertDefaultScheduleSettings({
         name: "gformgen_user_settings.json",
         mimeType: "application/json",
         appProperties: patch,
+        parents: toolFolderId ? [toolFolderId] : undefined,
       },
       fields: "id,appProperties",
     });
@@ -369,6 +383,9 @@ async function upsertDefaultScheduleSettings({
     requestBody: { appProperties: nextProps },
     fields: "id,appProperties",
   });
+  if (toolFolderId && existing?.id) {
+    await moveFileIntoFolderIfNeeded({ drive, fileId: existing.id, folderId: toolFolderId });
+  }
   return {
     fileId: updated?.data?.id || existing.id,
     settings: getDefaultScheduleFromProps(updated?.data?.appProperties || nextProps),
@@ -1300,6 +1317,7 @@ async function readDriveJsonFileOrNull(drive, fileId) {
 async function upsertFormSnapshot({ drive, authUser, formId, questionIdToTitle }) {
   const id = String(formId || "").trim();
   if (!id) return { ok: false };
+  const toolFolderId = await ensureToolFolderId({ drive, authUser });
   const existing = await findFormSnapshotFileOrNull({ drive, formId: id });
   const payload = {
     schemaVersion: FORM_SNAPSHOT_SCHEMA_VERSION,
@@ -1322,6 +1340,7 @@ async function upsertFormSnapshot({ drive, authUser, formId, questionIdToTitle }
         name: `gformgen_form_snapshot_${id}.json`,
         mimeType: "application/json",
         appProperties: patch,
+        parents: toolFolderId ? [toolFolderId] : undefined,
       },
       media: {
         mimeType: "application/json",
@@ -1344,7 +1363,70 @@ async function upsertFormSnapshot({ drive, authUser, formId, questionIdToTitle }
     },
     fields: "id",
   });
+  if (toolFolderId && existing?.id) {
+    await moveFileIntoFolderIfNeeded({ drive, fileId: existing.id, folderId: toolFolderId });
+  }
   return { ok: true, fileId: existing.id };
+}
+
+async function findToolFolderOrNull({ drive, authUser }) {
+  const sub = String(authUser?.sub || "").trim();
+  if (!sub) return null;
+  const q = [
+    "trashed = false",
+    "mimeType = 'application/vnd.google-apps.folder'",
+    `name = '${DRIVE_TOOL_FOLDER_NAME}'`,
+    `appProperties has { key='${APP_PROP_APP_KEY}' and value='${APP_PROP_APP_VALUE}' }`,
+    `appProperties has { key='${APP_PROP_TYPE_KEY}' and value='${APP_PROP_TYPE_TOOL_FOLDER}' }`,
+    `appProperties has { key='${APP_PROP_OWNER_SUB_KEY}' and value='${sub}' }`,
+  ].join(" and ");
+  const result = await drive.files.list({
+    q,
+    orderBy: "modifiedTime desc",
+    pageSize: 5,
+    fields: "files(id,name,modifiedTime,appProperties)",
+  });
+  const files = result?.data?.files || [];
+  return files?.[0] || null;
+}
+
+async function ensureToolFolderId({ drive, authUser }) {
+  const found = await findToolFolderOrNull({ drive, authUser });
+  if (found?.id) return String(found.id);
+  const sub = String(authUser?.sub || "").trim();
+  if (!sub) return "";
+  const patch = {
+    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+    [APP_PROP_TYPE_KEY]: APP_PROP_TYPE_TOOL_FOLDER,
+    [APP_PROP_OWNER_SUB_KEY]: sub,
+    ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
+    ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
+  };
+  const created = await drive.files.create({
+    requestBody: {
+      name: DRIVE_TOOL_FOLDER_NAME,
+      mimeType: "application/vnd.google-apps.folder",
+      appProperties: patch,
+    },
+    fields: "id",
+  });
+  return String(created?.data?.id || "");
+}
+
+async function moveFileIntoFolderIfNeeded({ drive, fileId, folderId }) {
+  const id = String(fileId || "").trim();
+  const target = String(folderId || "").trim();
+  if (!id || !target) return;
+  const current = await drive.files.get({ fileId: id, fields: "id,parents" });
+  const parents = Array.isArray(current?.data?.parents) ? current.data.parents : [];
+  if (parents.includes(target)) return;
+  const removeParents = parents.filter(Boolean).join(",");
+  await drive.files.update({
+    fileId: id,
+    addParents: target,
+    removeParents: removeParents || undefined,
+    fields: "id,parents",
+  });
 }
 
 async function buildQuestionIdToTitleMapWithSnapshot({ forms, drive, formId }) {
@@ -1652,6 +1734,10 @@ ${formTitle}
     });
     const formId = String(created?.data?.formId || "").trim();
     if (!formId) throw new Error("Form create failed: missing formId");
+    const toolFolderId = await ensureToolFolderId({ drive, authUser });
+    if (toolFolderId) {
+      await moveFileIntoFolderIfNeeded({ drive, fileId: formId, folderId: toolFolderId });
+    }
 
     /* =========================
        ② batchUpdate（★ここが重要）
@@ -2241,6 +2327,7 @@ app.get("/api/forms/:formId/info", async (req, res) => {
     const result = await forms.forms.get({ formId });
     const info = result?.data?.info || {};
     const responderUri = result?.data?.responderUri || "";
+    const editUrl = `https://docs.google.com/forms/d/${encodeURIComponent(String(formId || "").trim())}/edit`;
     const driveFile = await drive.files.get({
       fileId: formId,
       fields: "id,name,appProperties,ownedByMe",
@@ -2308,6 +2395,7 @@ app.get("/api/forms/:formId/info", async (req, res) => {
       formId,
       title: titleToReturn || "",
       formUrl: responderUri,
+      editUrl,
       acceptingResponses, // true/false/null
     });
   } catch (err) {

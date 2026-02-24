@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { FileText, BarChart3, Settings, LogOut, Lock, BookOpen } from "lucide-react";
+import { Pencil, BarChart3, Settings, LogOut, Lock, BookOpen } from "lucide-react";
 import "../App.css";
 import FormEditor from "../features/forms/FormEditor";
 import StatsViewer from "../features/stats/StatsViewer";
@@ -8,18 +8,64 @@ import SettingsPage from "../features/settings/Settings";
 import ManualPage from "../features/manual/Manual";
 import AuthGate from "../features/auth/AuthGate";
 
+const TAB_TO_PATH = {
+  stats: "/stats",
+  form: "/create",
+  settings: "/settings",
+  manual: "/manual",
+};
+
+function tabFromPath(pathname) {
+  const raw = String(pathname || "/").trim();
+  const normalized = raw.replace(/\/+$/, "") || "/";
+  if (normalized === "/" || normalized === "/stats") return "stats";
+  if (normalized === "/create") return "form";
+  if (normalized === "/settings") return "settings";
+  if (normalized === "/manual") return "manual";
+  return "stats";
+}
+
+function pathFromTab(tab) {
+  return TAB_TO_PATH[tab] || "/stats";
+}
+
 export default function App({ isLoggedIn, onLogin, onLogout }) {
-  // デフォルトは「集計結果」タブを開く
-  const [activeTab, setActiveTab] = useState("stats");
+  const [activeTab, setActiveTab] = useState(() =>
+    tabFromPath(typeof window !== "undefined" ? window.location.pathname : "/")
+  );
   const [createdFormId, setCreatedFormId] = useState(null);
   const [authPromptFor, setAuthPromptFor] = useState(null); // "stats" | "form" | null
+
+  const navigateToTab = useCallback((tab, { replace = false } = {}) => {
+    const nextTab = String(tab || "stats");
+    const nextPath = pathFromTab(nextTab);
+    setActiveTab(nextTab);
+    if (typeof window === "undefined") return;
+    if (window.location.pathname === nextPath) return;
+    window.history[replace ? "replaceState" : "pushState"]({}, "", nextPath);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // 初回表示時にURLを正規化（例: "/" -> "/stats"）
+    const canonical = pathFromTab(tabFromPath(window.location.pathname));
+    if (window.location.pathname !== canonical) {
+      window.history.replaceState({}, "", canonical);
+    }
+    const onPopState = () => {
+      setActiveTab(tabFromPath(window.location.pathname));
+      setAuthPromptFor(null);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
     if (isLoggedIn) setAuthPromptFor(null);
   }, [isLoggedIn]);
 
   const requestAuth = (tab) => {
-    setActiveTab(tab);
+    navigateToTab(tab);
     setAuthPromptFor(tab);
   };
 
@@ -47,7 +93,7 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
               className={`sangaku-nav-item ${activeTab === "stats" ? "active" : ""} ${
                 isLocked ? "is-locked" : ""
               }`}
-              onClick={() => (isLoggedIn ? setActiveTab("stats") : requestAuth("stats"))}
+              onClick={() => (isLoggedIn ? navigateToTab("stats") : requestAuth("stats"))}
               title={isLocked ? "集計（ログインが必要）" : "集計結果"}
               aria-label="集計結果"
               aria-disabled={isLocked}
@@ -59,14 +105,13 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
                 </span>
               )}
               <BarChart3 size={22} />
-              <span className="sangaku-nav-label">集計</span>
             </button>
             <button
               type="button"
               className={`sangaku-nav-item ${activeTab === "form" ? "active" : ""} ${
                 isLocked ? "is-locked" : ""
               }`}
-              onClick={() => (isLoggedIn ? setActiveTab("form") : requestAuth("form"))}
+              onClick={() => (isLoggedIn ? navigateToTab("form") : requestAuth("form"))}
               title={isLocked ? "作成（ログインが必要）" : "フォーム作成"}
               aria-label="フォーム作成"
               aria-disabled={isLocked}
@@ -77,8 +122,7 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
                   <Lock size={14} />
                 </span>
               )}
-              <FileText size={22} />
-              <span className="sangaku-nav-label">作成</span>
+              <Pencil size={22} />
             </button>
           </div>
         </nav>
@@ -101,7 +145,7 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
             className={`sangaku-nav-item sangaku-nav-item--subtle sangaku-nav-item--icononly ${
               activeTab === "manual" ? "active" : ""
             }`}
-            onClick={() => setActiveTab("manual")}
+            onClick={() => navigateToTab("manual")}
             aria-label="説明書"
             data-tooltip="説明書"
           >
@@ -113,7 +157,7 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
             className={`sangaku-nav-item sangaku-nav-item--subtle sangaku-nav-item--icononly ${
               activeTab === "settings" ? "active" : ""
             } ${isLocked ? "is-locked" : ""}`}
-            onClick={() => (isLoggedIn ? setActiveTab("settings") : requestAuth("settings"))}
+            onClick={() => (isLoggedIn ? navigateToTab("settings") : requestAuth("settings"))}
             aria-label="設定"
             aria-disabled={isLocked}
             data-tooltip={isLocked ? "ログインが必要です" : "設定"}
@@ -135,7 +179,7 @@ export default function App({ isLoggedIn, onLogin, onLogout }) {
             <AuthGate
               tab={authPromptFor || activeTab}
               onLogin={onLogin}
-              onGoSettings={() => setActiveTab("settings")}
+              onGoSettings={() => navigateToTab("settings")}
             />
           ) : activeTab === "form" ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

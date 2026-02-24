@@ -23,6 +23,9 @@ export default function ManualPage() {
                 回答が集まったら <b>出欠状況を一覧で確認</b>できる
               </li>
               <li>
+                集計画面から <b>フォーム確認（目） / フォーム編集（ペン）</b> を直接開ける
+              </li>
+              <li>
                 <b>CSV（Excel用） / PDF（印刷用）</b> で出力できる
               </li>
               <li>
@@ -86,7 +89,9 @@ export default function ManualPage() {
         title: "4. 出欠フォームを作る",
         body: (
           <>
-            <p style={{ marginTop: 0 }}>左側のメニューから「作成」を押します。</p>
+            <p style={{ marginTop: 0 }}>
+              左側メニューの <b>ペンアイコン（作成）</b> からフォーム作成画面を開きます。
+            </p>
             <h5 style={{ margin: "12px 0 6px" }}>入力する項目</h5>
             <ul style={{ marginTop: 8 }}>
               <li>
@@ -111,7 +116,7 @@ export default function ManualPage() {
                 <b>参加費（1人あたり）</b>（円で入力）
               </li>
               <li>
-                <b>参加者名の入力人数（1回答あたり）</b>
+                <b>参加者の上限入力人数（1回答あたり）</b>
             <div
               style={{
                 color: "color-mix(in srgb, var(--app-text) 65%, transparent)",
@@ -136,9 +141,6 @@ export default function ManualPage() {
                 <b>フォームを確認</b> → 実際のGoogleフォームを別タブで開きます
               </li>
               <li>
-                <b>リンクをコピー</b> → 回答用URLをコピーできます
-              </li>
-              <li>
                 <b>二次元バーコードを表示</b> → 参加者に見せて配布できます
               </li>
             </ul>
@@ -151,16 +153,41 @@ export default function ManualPage() {
         body: (
           <>
             <p style={{ marginTop: 0 }}>
-              左側のメニューから「集計」を押します。フォームを選ぶと、回答が表で表示されます。
+              左側メニューの <b>グラフアイコン（集計）</b> を押します。上部でフォームを選択すると、
+              「集計結果」に回答一覧が表示されます。
             </p>
+            <h5 style={{ margin: "12px 0 6px" }}>基本の流れ</h5>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>出欠</b>：出席/欠席が確認できます
+                まずプルダウンから <b>フォームを選択</b> します
               </li>
               <li>
-                <b>備考</b>：自由記述がある場合は、備考だけをまとめて見られます
+                フォーム名の左側に <b>「集計中 / 〆切済み」</b> の状態表示が出ます
               </li>
-             
+              <li>
+                一覧テーブルで <b>事業所 / 役職 / 氏名 / 出欠 / 送信日時</b> を確認できます
+              </li>
+              <li>
+                下部のサマリーで <b>出席事業所数</b> と <b>合計出席人数</b> を確認できます
+              </li>
+              <li>
+                行が多い場合は <b>「もっと見る」</b> で全件表示に切り替えできます
+              </li>
+            </ul>
+            <h5 style={{ margin: "12px 0 6px" }}>右側アイコンでできること</h5>
+            <ul style={{ marginTop: 8 }}>
+              <li>
+                <b>目アイコン</b>：回答用フォームを開いて内容を確認します
+              </li>
+              <li>
+                <b>ペンアイコン</b>：Googleフォーム編集画面を開きます
+              </li>
+              <li>
+                <b>二次元バーコードアイコン</b>：配布用バーコードを表示します
+              </li>
+              <li>
+                <b>備考ボタン</b>（表示時のみ）：自由記述を一覧表示します
+              </li>
             </ul>
           </>
         ),
@@ -174,7 +201,15 @@ export default function ManualPage() {
               集計画面のボタンから、Excel用のCSVや印刷用PDFを出力できます。
             </p>
             <ul style={{ marginTop: 8 }}>
-              
+              <li>
+                <b>CSV</b>：一覧データをExcel等で加工しやすい形式で保存します
+              </li>
+              <li>
+                <b>PDF</b>：配布・印刷向けの見やすい帳票形式で保存します
+              </li>
+              <li>
+                <b>備考</b> はPDF上で事業所ごとに1回だけ表示されます
+              </li>
             </ul>
           </>
         ),
@@ -196,7 +231,7 @@ export default function ManualPage() {
                     fontWeight: 800,
                   }}
                 >
-                  〆切時はタイトルに「（締め切られています）」が付き、回答受付用の設問は非表示になります。
+                  〆切時はタイトルに「（締め切られています）」が付き、回答受付用の設問は削除されます。
                 </div>
               </li>
               <li>
@@ -210,28 +245,34 @@ export default function ManualPage() {
                 </a>
                 に移動します（一定期間はゴミ箱から復元できます）
                 </li>
-
             </ul>
             <div className="manual-note">
               ※ 管理操作はログインした管理者のみ実行できます。
+            </div>
+            <div className="manual-note" style={{ marginTop: 10 }}>
+              ※ 作成されたフォームや設定ファイルは、Google Drive の「フォーム管理ツール」フォルダ内で管理されます。
             </div>
           </>
         ),
       },
       {
         id: "s8",
-        title: "8. リンク / 二次元バーコードで配布する",
+        title: "8. 集計画面のアイコン（確認 / 編集 / 配布）",
         body: (
           <>
             <p style={{ marginTop: 0 }}>
-              フォームを作成したら、集計画面でフォームを選ぶと <b>リンク</b> と <b>バーコード</b> が使えます。
+              フォームを作成したら、<b>集計</b>画面で対象フォームを選択します。右側のアイコンから
+              参加者への案内に必要な表示を開けます。
             </p>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>リンク</b>：回答用フォームを開きます（参加者へURLを共有）
+                <b>目アイコン（フォームを確認）</b>：回答用フォームを開きます（参加者に共有するURLの確認用）
               </li>
               <li>
-                <b>バーコード</b>：二次元バーコードを表示します（会場で投影/印刷して配布）
+                <b>ペンアイコン（フォームを編集）</b>：Googleフォームの編集画面を開きます（設問の修正時に使用）
+              </li>
+              <li>
+                <b>二次元バーコードアイコン</b>：二次元バーコードを表示します（会場で投影・印刷して配布）
               </li>
             </ul>
           </>
@@ -239,7 +280,88 @@ export default function ManualPage() {
       },
       {
         id: "s9",
-        title: "9. 備考（自由記述）をまとめて見る",
+        title: "9. Googleフォームを編集する",
+        body: (
+          <>
+            <p style={{ marginTop: 0 }}>
+              作成済みのGoogleフォームは、集計画面の編集ボタンから編集できます。
+            </p>
+            <h5 style={{ margin: "12px 0 6px" }}>編集画面でできること</h5>
+            <ul style={{ marginTop: 8 }}>
+              <li>フォームのタイトル変更</li>
+              <li>説明文の修正</li>
+              <li>質問項目の追加</li>
+              <li>既存質問の編集（文言変更・必須設定の切り替えなど）</li>
+              <li>質問の削除</li>
+              <li>選択肢の追加／修正</li>
+              <li>回答形式の変更（記述式・ラジオボタン・チェックボックスなど）</li>
+              <li>セクションの追加</li>
+              <li>質問の並び替え（ドラッグで移動可能）</li>
+            </ul>
+            <h5 style={{ margin: "12px 0 6px" }}>編集後の保存について</h5>
+            <p style={{ marginTop: 0 }}>
+              Googleフォームは自動保存されます。編集後に特別な保存操作は不要です。
+            </p>
+            <div className="manual-note">
+              ※ 公開中のフォームを編集すると、既に回答済みのデータに影響が出る場合があるため注意してください。
+            </div>
+            <h5 style={{ margin: "12px 0 6px" }}>参考リンク</h5>
+            <ul style={{ marginTop: 8 }}>
+
+            <li>
+                <a
+                  href="https://www.makeleaps.com/resources/articles/google-form-usage/#sec3"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Googleフォームの画面の見方と基本操作
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://www.youtube.com/watch?v=LCz4bHc8Was"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Googleフォームの画面の見方と基本操作（動画）
+                </a>
+              </li>
+              
+            
+              <li>
+                <a
+                  href="https://support.google.com/docs/answer/2839737"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Google公式ヘルプ：フォームの編集方法
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://support.google.com/docs/answer/2839739"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Google公式ヘルプ：質問の追加・変更方法
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://support.google.com/docs/answer/139706"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Google公式ヘルプ：回答の確認方法
+                </a>
+              </li>
+            </ul>
+          </>
+        ),
+      },
+      {
+        id: "s9b",
+        title: "10. 備考（自由記述）をまとめて見る",
         body: (
           <>
             <p style={{ marginTop: 0 }}>
@@ -254,7 +376,7 @@ export default function ManualPage() {
       },
       {
         id: "s10",
-        title: "10. よくある質問",
+        title: "11. よくある質問",
         body: (
           <>
             <ul style={{ marginTop: 8 }}>
@@ -267,14 +389,16 @@ export default function ManualPage() {
               <li>
                 <b>集計が更新されない</b>：ページを再読み込みしてみてください。
               </li>
-              
+              <li>
+                <b>二次元バーコードが読み取りづらい</b>：画面の明るさを上げるか、表示サイズを大きくして再表示してください。
+              </li>
             </ul>
           </>
         ),
       },
       {
         id: "s10b",
-        title: "10. 設定でできること",
+        title: "12. 設定でできること",
         body: (
           <>
             <ul style={{ marginTop: 8 }}>
@@ -291,7 +415,7 @@ export default function ManualPage() {
       },
       {
         id: "s11",
-        title: "11. 開発者について",
+        title: "13. 開発者について",
         body: (
           <>
             <ul style={{ marginTop: 8 }}>
@@ -338,11 +462,8 @@ export default function ManualPage() {
   const selected = sections.find((s) => s.id === selectedId) || sections[0];
 
   return (
-    <div style={{ maxWidth: 980, margin: "0 auto" }}>
+    <div className="manual-page" style={{ maxWidth: 980, margin: "0 auto", width: "100%" }}>
       <h2 style={{ marginTop: 0, color: "var(--app-text)" }}>説明書</h2>
-      <p style={{ margin: "0 0 12px", color: "color-mix(in srgb, var(--app-text) 70%, transparent)" }}>
-        
-      </p>
       <Box sx={{ mb: 2 }}>
         <TextField
           select

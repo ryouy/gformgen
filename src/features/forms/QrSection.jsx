@@ -12,7 +12,13 @@ export default function QrSection({ formUrl }) {
       animate={{ opacity: 1, y: 0 }}
     >
       <div style={{ textAlign: "center" }}>
-        <QRCodeCanvas value={formUrl} size={180} />
+        <QRCodeCanvas
+          value={formUrl}
+          size={180}
+          bgColor="#ffffff"
+          fgColor="#000000"
+          level="Q"
+        />
         <p style={{ marginTop: "1rem" }}>
           <a href={formUrl} target="_blank" rel="noopener noreferrer">
             フォームを確認

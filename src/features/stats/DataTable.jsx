@@ -15,7 +15,7 @@ export default function DataTable({ participants }) {
 
   return (
     <div className="data-table-wrapper">
-      <h3>全体集計結果</h3>
+      <h3 className="stats-main-title">集計結果</h3>
       <div className="table-scroll-container">
         <table className="data-table">
           <thead>
@@ -24,7 +24,7 @@ export default function DataTable({ participants }) {
               <th>役職名</th>
               <th>氏名</th>
               <th>出席/欠席</th>
-              <th>送信日時</th>
+              <th className="submitted-at-head">送信日時</th>
             </tr>
           </thead>
           <tbody>

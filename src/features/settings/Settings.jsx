@@ -222,7 +222,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div style={{ maxWidth: 980, margin: "0 auto" }}>
+    <div className="settings-page" style={{ maxWidth: 980, margin: "0 auto", width: "100%" }}>
       <h2 style={{ marginTop: 0, color: "var(--app-text)" }}>設定</h2>
 
       {loading ? (
@@ -312,7 +312,7 @@ export default function SettingsPage() {
                 <Box>
                   
                   <Stack spacing={2.25}>
-                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>開催日程</div>
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>開催日</div>
                     <TextField
                       select
                       value={weeksOffset}

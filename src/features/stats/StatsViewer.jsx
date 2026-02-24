@@ -33,6 +33,7 @@ export default function StatsViewer({ initialFormId }) {
   const [summaries, setSummaries] = useState({}); // { [formId]: { responseCount, attendeeCount } }
   const [selectedFormId, setSelectedFormId] = useState("");
   const [formUrl, setFormUrl] = useState("");
+  const [editUrl, setEditUrl] = useState("");
   const [acceptingResponses, setAcceptingResponses] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -150,12 +151,14 @@ export default function StatsViewer({ initialFormId }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Failed to get form info");
       setFormUrl(data?.formUrl || "");
+      setEditUrl(data?.editUrl || "");
       setAcceptingResponses(
         typeof data?.acceptingResponses === "boolean" ? data.acceptingResponses : null
       );
     } catch (e) {
       console.error(e);
       setFormUrl("");
+      setEditUrl("");
       setAcceptingResponses(null);
     }
   }, []);
@@ -410,6 +413,7 @@ export default function StatsViewer({ initialFormId }) {
       setSelectedFormId("");
       setRows([]);
       setFormUrl("");
+      setEditUrl("");
       setAcceptingResponses(null);
       window.localStorage.removeItem(SELECTED_FORM_ID_STORAGE_KEY);
       void fetchForms();
@@ -437,6 +441,7 @@ export default function StatsViewer({ initialFormId }) {
         acceptingResponses={acceptingResponses}
         refreshing={refreshing}
         formUrl={formUrl}
+        editUrl={editUrl}
         remarkRowsLength={remarkRows.length}
         setSelectedFormId={setSelectedFormId}
         rememberRecentFormId={rememberRecentFormId}
@@ -444,6 +449,7 @@ export default function StatsViewer({ initialFormId }) {
         setEmptyDelayDone={setEmptyDelayDone}
         setError={setError}
         setFormUrl={setFormUrl}
+        setEditUrl={setEditUrl}
         setAcceptingResponses={setAcceptingResponses}
         setRemarksOpen={setRemarksOpen}
         setQrOpen={setQrOpen}

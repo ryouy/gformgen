@@ -9,3 +9,18 @@
 .MuiPickersDigitalClockItem-disabled {
   display: none !important;
 }
+
+@media (max-width: 720px) {
+  .settings-page h2,
+  .manual-page h2,
+  .stats-viewer h3,
+  .form-grid-wrapper h2 {
+    font-size: 1.2rem;
+    line-height: 1.4;
+  }
+
+  .manual-bubble-body {
+    line-height: 1.75;
+    font-size: 0.95rem;
+  }
+}

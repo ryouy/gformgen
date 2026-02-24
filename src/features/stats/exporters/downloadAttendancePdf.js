@@ -81,26 +81,19 @@ export function downloadAttendancePdf({ rows, selectedFormId, title, fontData })
     { align: "center" }
   );
 
-  // 備考は本表とは分けて、事業所ごとの一覧として見やすく配置
-  const remarkSource = (expanded || [])
-    .filter((r) => String(r?.remarks || "").trim().length > 0)
-    .map((r) => ({
-      company: String(r?.company || "").trim() || "—",
-      remarks: String(r?.remarks || "").trim(),
-    }));
+  // 備考は「事業所ごとに1回だけ」表示する
+  const remarkRows = [];
+  const seenCompanies = new Set();
+  for (const r of expanded || []) {
+    const remarks = String(r?.remarks || "").trim();
+    if (!remarks) continue;
+    const company = String(r?.company || "").trim() || "—";
+    if (seenCompanies.has(company)) continue;
+    seenCompanies.add(company);
+    remarkRows.push([company, remarks]);
+  }
 
-  if (remarkSource.length > 0) {
-    /** @type {Record<string, Array<{remarks: string, submittedAt: string}>>} */
-    const byCompany = {};
-    for (const r of remarkSource) {
-      if (!byCompany[r.company]) byCompany[r.company] = [];
-      byCompany[r.company].push({ remarks: r.remarks });
-    }
-
-    const remarkRows = Object.entries(byCompany).map(([company, list]) => {
-      const text = (list || []).map((x) => x.remarks).join("\n");
-      return [company, text];
-    });
+  if (remarkRows.length > 0) {
 
     const remarksStartY = pdf.lastAutoTable.finalY + 18;
     pdf.setFontSize(12);

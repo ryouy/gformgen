@@ -234,7 +234,7 @@ export default function FormEditor({
             fullWidth
           />
 
-          <Box sx={{ display: "flex", gap: 2, flexDirection: { xs: "column", sm: "row" } }}>
+          <Box sx={{ display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" } }}>
             <DateTimeInput
               value={formData.datetime}
               onChange={handleDateTimeChange}
@@ -347,7 +347,13 @@ export default function FormEditor({
 
             <div className={`qr-inline ${formUrl ? "" : "is-placeholder"}`}>
               {formUrl ? (
-                <QRCodeCanvas value={formUrl} size={95} />
+                <QRCodeCanvas
+                  value={formUrl}
+                  size={95}
+                  bgColor="#ffffff"
+                  fgColor="#000000"
+                  level="Q"
+                />
               ) : (
                 <div className="qr-placeholder" aria-hidden="true">
                   <div className="qr-placeholder-text">バーコードが<br />表示されます</div>

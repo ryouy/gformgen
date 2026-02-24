@@ -105,6 +105,22 @@
   font-weight: 700;
 }
 
+.remarks-close-btn {
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent2);
+  border-radius: 10px;
+  font-weight: 800;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.remarks-close-btn:hover {
+  border-color: rgba(var(--accent-rgb), 0.62);
+  background: rgba(var(--accent-rgb), 0.18);
+}
+
 .sangaku-main {
   flex: 1;
   min-width: 0;

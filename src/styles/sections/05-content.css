@@ -25,13 +25,16 @@
     margin: 0.9rem auto;
     padding: 1.25rem 1.05rem;
     border-radius: 16px;
-    min-height: calc(100dvh - 1.8rem); /* margin(0.9rem * 2) */
+    min-height: auto;
   }
 }
 
 @media (max-width: 420px) {
   .content {
-    padding: 1.1rem 0.9rem;
+    width: calc(100% - 10px);
+    margin: 0.5rem auto;
+    padding: 1rem 0.78rem;
+    border-radius: 14px;
   }
 }
 

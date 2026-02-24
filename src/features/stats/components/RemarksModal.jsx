@@ -43,7 +43,7 @@ export default function RemarksModal({ open, onClose, remarkRows, selectedFormId
           <div style={{ fontWeight: 1000, fontSize: "1rem", color: "#0f172a" }}>
             備考一覧
           </div>
-          <button type="button" className="expand-btn" onClick={onClose}>
+          <button type="button" className="remarks-close-btn" onClick={onClose}>
             閉じる
           </button>
         </div>
