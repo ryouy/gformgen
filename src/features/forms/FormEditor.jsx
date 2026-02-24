@@ -14,6 +14,7 @@ export default function FormEditor({
 }) {
   const dirtyRef = useRef(false);
   const participantDirtyRef = useRef(false);
+  const [hasEditedPrice, setHasEditedPrice] = useState(false);
 
   const buildEndDateTime = (start, endHour, endMinute) => {
     const h = Number(endHour);
@@ -56,7 +57,7 @@ export default function FormEditor({
     endDatetime: initialSchedule.endDatetime,
     deadline: initialSchedule.deadline,
     place: "会津若松ワシントンホテル",
-    price: 3000,
+    price: 0,
     host: "会津産学懇話会",
     participantNameCount: 1,
   });
@@ -85,6 +86,7 @@ export default function FormEditor({
     if (["participantNameCount", "price", "title", "place", "host"].includes(name)) {
       participantDirtyRef.current = true;
     }
+    if (name === "price") setHasEditedPrice(true);
     setFormData({ ...formData, [name]: value });
   };
 
@@ -157,7 +159,7 @@ export default function FormEditor({
               place: place || prev.place,
               host: host || prev.host,
               participantNameCount: n,
-              price: Number.isFinite(p) ? p : 3000,
+              price: Number.isFinite(p) ? p : 0,
             }));
           }
         }
@@ -271,13 +273,22 @@ export default function FormEditor({
             label="参加費（1人あたり）"
             name="price"
             type="number"
-            value={formData.price}
+            value={!hasEditedPrice && Number(formData.price) <= 0 ? "" : formData.price}
             onChange={handleChange}
             fullWidth
             inputProps={{ min: 0, step: 100 }}
             InputProps={{
-              startAdornment: <InputAdornment position="start">￥</InputAdornment>,
+              startAdornment: (
+                <InputAdornment position="start">
+                  {Number(formData.price) > 0 ? "￥" : "無料"}
+                </InputAdornment>
+              ),
             }}
+            helperText={
+              Number(formData.price) <= 0
+                ? "フォームには「参加費（1人あたり）：無料」と表示されます。"
+                : ""
+            }
           />
 
           <TextField

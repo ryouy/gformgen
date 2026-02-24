@@ -182,7 +182,7 @@ function getFormDefaultsFromProps(appProperties) {
   const participantNameCount =
     parseIntInRange(props?.[APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY], { min: 1, max: 20 }) ??
     1;
-  const defaultPrice = parseIntInRange(props?.[APP_PROP_DEFAULT_PRICE_KEY], { min: 0, max: 99999999 }) ?? 3000;
+  const defaultPrice = parseIntInRange(props?.[APP_PROP_DEFAULT_PRICE_KEY], { min: 0, max: 99999999 }) ?? 0;
   const defaultMeetingTitle =
     String(props?.[APP_PROP_DEFAULT_MEETING_TITLE_KEY] || "").trim() ||
     "会津産学懇話会 月定例会";
@@ -1119,7 +1119,7 @@ app.post("/api/user-settings/form-defaults", async (req, res) => {
     const participantNameCount =
       parseIntInRange(req?.body?.participantNameCount, { min: 1, max: 20 }) ?? null;
     const parsedDefaultPrice = parseIntInRange(req?.body?.defaultPrice, { min: 0, max: 99999999 });
-    const defaultPrice = parsedDefaultPrice == null ? 3000 : parsedDefaultPrice;
+    const defaultPrice = parsedDefaultPrice == null ? 0 : parsedDefaultPrice;
     const defaultMeetingTitle = String(req?.body?.defaultMeetingTitle || "").trim();
     const defaultPlace = String(req?.body?.defaultPlace || "").trim();
     const defaultHost = String(req?.body?.defaultHost || "").trim();
@@ -1681,7 +1681,7 @@ app.post("/api/forms/create", async (req, res) => {
     const safeParticipantNameCount = Number.isFinite(parsedCount)
       ? Math.max(1, Math.min(20, Math.floor(parsedCount)))
       : 1;
-    const safePrice = parseIntInRange(price, { min: 0, max: 99999999 }) ?? 3000;
+    const safePrice = parseIntInRange(price, { min: 0, max: 99999999 }) ?? 0;
 
     // ★ Drive / Forms に表示される最終タイトル
     const baseTitle = title ? `${title} 出欠通知書` : "出欠通知書";
@@ -1715,7 +1715,7 @@ ${formTitle}
 【会合情報】
 ・日時： ${formattedMeetingRange}
 ・場所： ${place}
-・参加費（1人あたり）：￥ ${safePrice}
+・参加費（1人あたり）：${safePrice <= 0 ? "無料" : `￥ ${safePrice}`}
 ・〆切： ${formatDateJP(deadline)}
 
 【お問合せ先】

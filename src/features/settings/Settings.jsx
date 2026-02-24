@@ -58,7 +58,7 @@ export default function SettingsPage() {
   );
 
   const [participantNameCount, setParticipantNameCount] = useState(1);
-  const [defaultPrice, setDefaultPrice] = useState(3000);
+  const [defaultPrice, setDefaultPrice] = useState(0);
   const [defaultMeetingTitle, setDefaultMeetingTitle] = useState("会津産学懇話会 月定例会");
   const [defaultPlace, setDefaultPlace] = useState("会津若松ワシントンホテル");
   const [defaultHost, setDefaultHost] = useState("会津産学懇話会");
@@ -118,7 +118,7 @@ export default function SettingsPage() {
           const data = await r3.value.json().catch(() => ({}));
           const s = data?.settings || {};
           setParticipantNameCount(Number(s?.participantNameCount) || 1);
-          setDefaultPrice(Number(s?.defaultPrice) || 3000);
+          setDefaultPrice(Number(s?.defaultPrice) || 0);
           setDefaultMeetingTitle(String(s?.defaultMeetingTitle || "会津産学懇話会 月定例会"));
           setDefaultPlace(String(s?.defaultPlace || "会津若松ワシントンホテル"));
           setDefaultHost(String(s?.defaultHost || "会津産学懇話会"));
@@ -290,8 +290,17 @@ export default function SettingsPage() {
                       disabled={loading || savingAll}
                       inputProps={{ min: 0, step: 100 }}
                       InputProps={{
-                        startAdornment: <InputAdornment position="start">￥</InputAdornment>,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            {Number(defaultPrice) > 0 ? "￥" : "無料"}
+                          </InputAdornment>
+                        ),
                       }}
+                      helperText={
+                        Number(defaultPrice) <= 0
+                          ? "0の場合、フォーム本文には「参加費（1人あたり）：無料」と表示されます。"
+                          : ""
+                      }
                     />
                     <div style={{ fontWeight: 800, color: "var(--app-text)" }}>参加者の上限人数</div>
                     <TextField
