@@ -1,6 +1,6 @@
 # FMT [Form Management Tool]
 
-[try here](https://gfca-aizu.web.app)
+[Try here](https://gfca-aizu.web.app)
 
 A user guide in easy-to-understand Japanese is available: [userGuide.pdf](userGuide.pdf).
 
