@@ -1,4 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
+
+const MOBILE_BREAKPOINT = 720;
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= MOBILE_BREAKPOINT
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`);
+    const fn = () => setIsMobile(mq.matches);
+    fn();
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, []);
+  return isMobile;
+}
 import { motion } from "framer-motion";
 import { Pencil, BarChart3, Settings, LogOut, Lock, BookOpen } from "lucide-react";
 import "../App.css";
@@ -38,6 +53,7 @@ export default function App({
   navPosition = "sidebar",
   navLabelMode = "icon",
 }) {
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState(() =>
     tabFromPath(typeof window !== "undefined" ? window.location.pathname : "/")
   );
@@ -218,7 +234,10 @@ export default function App({
       )}
 
       <div className="sangaku-main">
-        <main className="content">
+        <main
+          className="content"
+          data-active-tab={activeTab}
+        >
           {needsAuth ? (
             <AuthGate
               tab={authPromptFor || activeTab}
@@ -239,7 +258,15 @@ export default function App({
             </motion.div>
           ) : activeTab === "manual" ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <ManualPage onOpenPdf={() => navigateToTab("userGuide")} />
+              <ManualPage
+              onOpenPdf={() => {
+                if (isMobile) {
+                  window.open("/userGuide.pdf", "_blank", "noopener,noreferrer");
+                } else {
+                  navigateToTab("userGuide");
+                }
+              }}
+            />
             </motion.div>
           ) : activeTab === "userGuide" ? (
             <motion.div
@@ -256,11 +283,25 @@ export default function App({
                   ← 説明書に戻る
                 </button>
               </div>
-              <iframe
-                src="/userGuide.pdf#toolbar=0&navpanes=0"
-                title="利用ガイド PDF"
-                className="user-guide-iframe"
-              />
+              {isMobile ? (
+                <div className="user-guide-mobile-fallback">
+                  <p>スマホではPDFのスクロールがうまくいかないため、新しいタブで開いてください。</p>
+                  <a
+                    href="/userGuide.pdf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="user-guide-open-btn"
+                  >
+                    新しいタブでPDFを開く
+                  </a>
+                </div>
+              ) : (
+                <iframe
+                  src="/userGuide.pdf#toolbar=0&navpanes=0"
+                  title="利用ガイド PDF"
+                  className="user-guide-iframe"
+                />
+              )}
             </motion.div>
           ) : (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

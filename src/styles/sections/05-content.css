@@ -41,11 +41,28 @@
 /* -------------------------------
 📄 PDF利用ガイドページ
 --------------------------------*/
+/* PDF表示時はコンテンツカードを明るい背景で埋め、黒い余白を目立たなく */
+.content[data-active-tab="userGuide"] {
+  padding: 12px;
+  background: #f1f5f9;
+  box-shadow: none;
+}
+
+@media (max-width: 720px) {
+  .content[data-active-tab="userGuide"] {
+    padding: 8px;
+  }
+}
+
 .user-guide-page {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: calc(100dvh - 32px);
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
 }
 
 .user-guide-page-header {
@@ -82,8 +99,49 @@
   min-height: 0;
   width: 100%;
   border: none;
-  border-radius: 0;
-  background: #fff;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+/* スマホ：iframe内PDFはスクロールできないため、新しいタブで開く案内 */
+.user-guide-mobile-fallback {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 24px;
+  text-align: center;
+}
+
+.user-guide-mobile-fallback p {
+  margin: 0;
+  color: var(--app-text);
+  font-weight: 800;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.user-guide-open-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent2) 0%, var(--accent) 100%);
+  color: #fff;
+  font-weight: 900;
+  text-decoration: none;
+  box-shadow: 0 8px 20px rgba(var(--accent-rgb), 0.25);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.user-guide-open-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(var(--accent-rgb), 0.3);
 }
 
 @media (max-width: 720px) {
