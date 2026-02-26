@@ -520,6 +520,21 @@ export default function ManualPage() {
   return (
     <div className="manual-page" style={{ maxWidth: 980, margin: "0 auto", width: "100%" }}>
       <h2 style={{ marginTop: 0, color: "var(--app-text)" }}>説明書</h2>
+      <p style={{ margin: "0 0 12px", fontSize: "0.95rem" }}>
+        <a
+          href="/userGuide.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: "var(--accent2)",
+            fontWeight: 800,
+            textDecoration: "underline",
+            textUnderlineOffset: 3,
+          }}
+        >
+          PDF版の利用ガイドをオンラインで閲覧
+        </a>
+      </p>
       <Box sx={{ mb: 2 }}>
         <TextField
           select
