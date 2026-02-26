@@ -71,7 +71,10 @@
     display: none; /* モバイルではアイコンだけにして省スペース */
   }
   .stats-action-chip {
-    padding: 0 9px;
+    padding: 0 12px;
+    min-height: 44px;
+    height: 44px;
+    -webkit-tap-highlight-color: transparent;
   }
 }
 

@@ -13,6 +13,7 @@ const TAB_TO_PATH = {
   form: "/create",
   settings: "/settings",
   manual: "/manual",
+  userGuide: "/user-guide",
 };
 
 function tabFromPath(pathname) {
@@ -22,6 +23,7 @@ function tabFromPath(pathname) {
   if (normalized === "/create") return "form";
   if (normalized === "/settings") return "settings";
   if (normalized === "/manual") return "manual";
+  if (normalized === "/user-guide") return "userGuide";
   return "stats";
 }
 
@@ -142,7 +144,7 @@ export default function App({
       <button
         type="button"
         className={`sangaku-nav-item sangaku-nav-item--subtle ${
-          activeTab === "manual" ? "active" : ""
+          activeTab === "manual" || activeTab === "userGuide" ? "active" : ""
         }`}
         onClick={() => navigateToTab("manual")}
         aria-label="説明書"
@@ -237,7 +239,28 @@ export default function App({
             </motion.div>
           ) : activeTab === "manual" ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <ManualPage />
+              <ManualPage onOpenPdf={() => navigateToTab("userGuide")} />
+            </motion.div>
+          ) : activeTab === "userGuide" ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="user-guide-page"
+            >
+              <div className="user-guide-page-header">
+                <button
+                  type="button"
+                  className="user-guide-back-btn"
+                  onClick={() => navigateToTab("manual")}
+                >
+                  ← 説明書に戻る
+                </button>
+              </div>
+              <iframe
+                src="/userGuide.pdf#toolbar=0&navpanes=0"
+                title="利用ガイド PDF"
+                className="user-guide-iframe"
+              />
             </motion.div>
           ) : (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

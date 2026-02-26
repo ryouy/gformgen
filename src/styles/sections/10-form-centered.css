@@ -37,3 +37,14 @@
   }
 }
 
+@media (max-width: 420px) {
+  .form-centered-wrapper {
+    padding: 0.5rem;
+    align-items: flex-start;
+  }
+  .form-card {
+    padding: 1rem 0.9rem;
+    gap: 1rem;
+  }
+}
+

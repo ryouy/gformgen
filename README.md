@@ -2,7 +2,7 @@
 
 [Try here](https://gfca-aizu.web.app)
 
-A user guide in easy-to-understand Japanese is available: [userGuide.pdf](userGuide.pdf).
+A user guide in easy-to-understand Japanese is available: [userGuide.pdf](https://gfca-aizu.web.app/user-guide).
 
 A small admin tool to **programmatically create, rediscover, and aggregate Google Forms**.
 

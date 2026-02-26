@@ -23,4 +23,19 @@
     line-height: 1.75;
     font-size: 0.95rem;
   }
+
+  .settings-page,
+  .manual-page {
+    padding-left: 12px;
+    padding-right: 12px;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 420px) {
+  .settings-page,
+  .manual-page {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
