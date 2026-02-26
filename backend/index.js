@@ -93,8 +93,24 @@ const APP_PROP_STATUS_CLOSED = "closed";
 const APP_PROP_OWNER_SUB_KEY = "gformgen_owner_sub";
 const APP_PROP_OWNER_EMAIL_KEY = "gformgen_owner_email";
 const APP_PROP_OWNER_NAME_KEY = "gformgen_owner_name";
-const CLOSED_NOTICE_TITLE = "このフォームは締め切られています。";
-const CLOSED_NOTICE_DESCRIPTION = "回答の受付は終了しました。";
+const CLOSED_NOTICE_TITLE = "【回答受付終了】このフォームは締め切られています。";
+
+function buildClosedNoticeDescription(host) {
+  const hostLabel = String(host || "").trim() || "主催者";
+  return [
+    "このフォームの回答受付は終了しました。",
+    "新しい回答は送信できません。",
+    "",
+    `ご不明な点は${hostLabel}事務局へお問い合わせください。`,
+    "（TEL）0242-23-8511",
+  ].join("\n");
+}
+
+function extractHostFromFormDescription(description) {
+  const s = String(description || "").trim();
+  const m = s.match(/【お問合せ先】\s*\n\s*(.+?)\s*事務局/);
+  return m ? m[1].trim() : "";
+}
 const APP_PROP_TYPE_FORM_SNAPSHOT = "form_snapshot";
 const APP_PROP_FORM_ID_KEY = "gformgen_form_id";
 const FORM_SNAPSHOT_SCHEMA_VERSION = 1;
@@ -104,11 +120,13 @@ const FORM_SNAPSHOT_SCHEMA_VERSION = 1;
 const APP_PROP_TYPE_KEY = "gformgen_type";
 const APP_PROP_TYPE_USER_SETTINGS = "user_settings";
 const APP_PROP_TYPE_TOOL_FOLDER = "tool_folder";
+const APP_PROP_TYPE_SETTINGS_FOLDER = "settings_folder";
 const APP_PROP_SETTINGS_KIND_KEY = "gformgen_settings_kind";
-const SETTINGS_KIND_DEFAULT_SCHEDULE = "default_schedule";
-const SETTINGS_KIND_THEME = "theme";
-const SETTINGS_KIND_FORM_DEFAULTS = "form_defaults";
+const APP_PROP_SETTINGS_BODY_VERSION_KEY = "gformgen_settings_body_version";
+const SETTINGS_KIND_UNIFIED = "all";
+const SETTINGS_BODY_VERSION = "1";
 const DRIVE_TOOL_FOLDER_NAME = "フォーム管理ツール";
+const DRIVE_SETTINGS_FOLDER_NAME = "設定ファイル";
 
 const APP_PROP_DEFAULT_WEEKS_KEY = "gformgen_default_weeks";
 const APP_PROP_DEFAULT_HOUR_KEY = "gformgen_default_hour";
@@ -119,6 +137,8 @@ const APP_PROP_DEFAULT_END_MINUTE_KEY = "gformgen_default_end_minute";
 const APP_PROP_DEFAULT_DEADLINE_DAYS_BEFORE_KEY = "gformgen_default_deadline_days_before";
 const APP_PROP_THEME_ACCENT_KEY = "gformgen_theme_accent";
 const APP_PROP_THEME_SCOPE_KEY = "gformgen_theme_scope"; // kept for backward compatibility; always "sidebar"
+const APP_PROP_NAV_POSITION_KEY = "gformgen_nav_position"; // sidebar | top | bottom-left | top-left
+const APP_PROP_NAV_LABEL_MODE_KEY = "gformgen_nav_label_mode"; // icon | text | both
 const APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY = "gformgen_default_participant_name_count";
 const APP_PROP_DEFAULT_PRICE_KEY = "gformgen_default_price";
 const APP_PROP_DEFAULT_MEETING_TITLE_KEY = "gformgen_default_meeting_title";
@@ -152,7 +172,7 @@ function parseIntInRange(v, { min, max } = {}) {
 
 function getDefaultScheduleFromProps(appProperties) {
   const props = appProperties || {};
-  const weeksOffset = parseIntInRange(props?.[APP_PROP_DEFAULT_WEEKS_KEY], { min: 1, max: 3 }) ?? 1;
+  const weeksOffset = parseIntInRange(props?.[APP_PROP_DEFAULT_WEEKS_KEY], { min: 1, max: 6 }) ?? 6;
   const hour = parseIntInRange(props?.[APP_PROP_DEFAULT_HOUR_KEY], { min: 0, max: 23 }) ?? 15;
   const minute = parseIntInRange(props?.[APP_PROP_DEFAULT_MINUTE_KEY], { min: 0, max: 59 }) ?? 0;
   const deadlineDaysBefore =
@@ -171,10 +191,19 @@ function getDefaultScheduleFromProps(appProperties) {
   return { weeksOffset, hour, minute, endHour, endMinute, deadlineDaysBefore };
 }
 
+const VALID_NAV_POSITIONS = ["sidebar", "bottom-left", "top-left"];
+const VALID_NAV_LABEL_MODES = ["icon", "text", "both"];
+
 function getThemeFromProps(appProperties) {
   const props = appProperties || {};
   const accent = normalizeHexColor(props?.[APP_PROP_THEME_ACCENT_KEY]) || "#6b7280";
-  return { accent, scope: THEME_SCOPE_SIDEBAR };
+  const navPosition = VALID_NAV_POSITIONS.includes(props?.[APP_PROP_NAV_POSITION_KEY])
+    ? props[APP_PROP_NAV_POSITION_KEY]
+    : "sidebar";
+  const navLabelMode = VALID_NAV_LABEL_MODES.includes(props?.[APP_PROP_NAV_LABEL_MODE_KEY])
+    ? props[APP_PROP_NAV_LABEL_MODE_KEY]
+    : "icon";
+  return { accent, scope: THEME_SCOPE_SIDEBAR, navPosition, navLabelMode };
 }
 
 function getFormDefaultsFromProps(appProperties) {
@@ -193,54 +222,225 @@ function getFormDefaultsFromProps(appProperties) {
   return { participantNameCount, defaultPrice, defaultMeetingTitle, defaultPlace, defaultHost };
 }
 
-async function upsertThemeSettings({ drive, authUser, accent, scope }) {
+function buildUnifiedSettingsFileContent(appProperties) {
+  const props = appProperties || {};
+  return {
+    schemaVersion: 1,
+    updatedAt: new Date().toISOString(),
+    defaultSchedule: getDefaultScheduleFromProps(props),
+    theme: getThemeFromProps(props),
+    formDefaults: getFormDefaultsFromProps(props),
+  };
+}
+
+function buildUserSettingsBasePatch(authUser) {
   const sub = String(authUser?.sub || "").trim();
   if (!sub) throw new Error("Missing auth user sub");
-  const toolFolderId = await ensureToolFolderId({ drive, authUser });
-  const existing = await findUserSettingsFileOrNull({
-    drive,
-    authUser,
-    kind: SETTINGS_KIND_THEME,
-  });
-  const patch = {
+  return {
     [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
     [APP_PROP_TYPE_KEY]: APP_PROP_TYPE_USER_SETTINGS,
-    [APP_PROP_SETTINGS_KIND_KEY]: SETTINGS_KIND_THEME,
+    [APP_PROP_SETTINGS_KIND_KEY]: SETTINGS_KIND_UNIFIED,
+    [APP_PROP_SETTINGS_BODY_VERSION_KEY]: SETTINGS_BODY_VERSION,
     [APP_PROP_OWNER_SUB_KEY]: sub,
     ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
     ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
-    [APP_PROP_THEME_ACCENT_KEY]: String(accent),
-    [APP_PROP_THEME_SCOPE_KEY]: String(scope),
   };
+}
 
-  if (!existing?.id) {
+async function listUserSettingsFiles({ drive, authUser }) {
+  const sub = String(authUser?.sub || "").trim();
+  if (!sub) return [];
+  const q = [
+    "trashed = false",
+    `appProperties has { key='${APP_PROP_APP_KEY}' and value='${APP_PROP_APP_VALUE}' }`,
+    `appProperties has { key='${APP_PROP_TYPE_KEY}' and value='${APP_PROP_TYPE_USER_SETTINGS}' }`,
+    `appProperties has { key='${APP_PROP_OWNER_SUB_KEY}' and value='${sub}' }`,
+  ].join(" and ");
+  const result = await drive.files.list({
+    q,
+    orderBy: "modifiedTime desc",
+    pageSize: 100,
+    fields: "files(id,name,modifiedTime,appProperties,parents)",
+  });
+  return result?.data?.files || [];
+}
+
+async function markDriveFileAsTrashedSafe({ drive, fileId }) {
+  if (!String(fileId || "").trim()) return;
+  try {
+    await drive.files.update({
+      fileId,
+      requestBody: { trashed: true },
+      fields: "id",
+    });
+  } catch {
+    // Best-effort cleanup only.
+  }
+}
+
+async function ensureUnifiedUserSettingsFile({
+  drive,
+  authUser,
+  createIfMissing = false,
+}) {
+  const basePatch = buildUserSettingsBasePatch(authUser);
+  const settingsFolderId = await ensureSettingsFolderId({ drive, authUser });
+  const files = await listUserSettingsFiles({ drive, authUser });
+  const unifiedFiles = files.filter(
+    (f) => String(f?.appProperties?.[APP_PROP_SETTINGS_KIND_KEY] || "") === SETTINGS_KIND_UNIFIED
+  );
+  const legacyFiles = files.filter(
+    (f) => String(f?.appProperties?.[APP_PROP_SETTINGS_KIND_KEY] || "") !== SETTINGS_KIND_UNIFIED
+  );
+
+  if (!createIfMissing && unifiedFiles.length === 0 && legacyFiles.length === 0) {
+    return { file: null, migrated: false };
+  }
+
+  let canonical = unifiedFiles?.[0] || null;
+
+  if (!canonical && legacyFiles.length === 0 && createIfMissing) {
     const created = await drive.files.create({
       requestBody: {
-        name: "gformgen_user_settings_theme.json",
+        name: "gformgen_user_settings.json",
         mimeType: "application/json",
-        appProperties: patch,
-        parents: toolFolderId ? [toolFolderId] : undefined,
+        appProperties: basePatch,
+        parents: settingsFolderId ? [settingsFolderId] : undefined,
       },
-      fields: "id,appProperties",
+      media: {
+        mimeType: "application/json",
+        body: JSON.stringify(buildUnifiedSettingsFileContent(basePatch), null, 2),
+      },
+      fields: "id,appProperties,parents",
     });
     return {
-      fileId: created?.data?.id || "",
-      settings: getThemeFromProps(created?.data?.appProperties),
+      file: { id: created?.data?.id || "", appProperties: created?.data?.appProperties || basePatch },
+      migrated: false,
     };
   }
 
-  const nextProps = mergeAppProperties(existing?.appProperties || {}, patch);
+  const needsMigration = legacyFiles.length > 0 || unifiedFiles.length > 1;
+  if (!needsMigration && canonical?.id) {
+    const nextProps = mergeAppProperties(canonical?.appProperties || {}, basePatch);
+    const currentProps = canonical?.appProperties || {};
+    const needsPatch = Object.keys(basePatch).some(
+      (k) => String(currentProps?.[k] || "") !== String(nextProps?.[k] || "")
+    );
+    const updated = needsPatch
+      ? await drive.files.update({
+          fileId: canonical.id,
+          requestBody: { appProperties: nextProps },
+          media: {
+            mimeType: "application/json",
+            body: JSON.stringify(buildUnifiedSettingsFileContent(nextProps), null, 2),
+          },
+          fields: "id,appProperties,parents",
+        })
+      : null;
+    if (settingsFolderId) {
+      await moveFileIntoFolderIfNeeded({ drive, fileId: canonical.id, folderId: settingsFolderId });
+    }
+    return {
+      file: {
+        id: updated?.data?.id || canonical.id,
+        appProperties: updated?.data?.appProperties || (needsPatch ? nextProps : currentProps),
+      },
+      migrated: false,
+    };
+  }
+
+  const mergeTargets = [...files].sort((a, b) => {
+    const ta = Date.parse(String(a?.modifiedTime || "")) || 0;
+    const tb = Date.parse(String(b?.modifiedTime || "")) || 0;
+    return ta - tb;
+  });
+  const mergedProps = mergeTargets.reduce(
+    (acc, f) => mergeAppProperties(acc, f?.appProperties || {}),
+    {}
+  );
+  const finalProps = mergeAppProperties(mergedProps, basePatch);
+
+  if (canonical?.id) {
+    const updated = await drive.files.update({
+      fileId: canonical.id,
+      requestBody: { appProperties: finalProps },
+      media: {
+        mimeType: "application/json",
+        body: JSON.stringify(buildUnifiedSettingsFileContent(finalProps), null, 2),
+      },
+      fields: "id,appProperties,parents",
+    });
+    canonical = { id: updated?.data?.id || canonical.id, appProperties: updated?.data?.appProperties || finalProps };
+  } else {
+    const created = await drive.files.create({
+      requestBody: {
+        name: "gformgen_user_settings.json",
+        mimeType: "application/json",
+        appProperties: finalProps,
+        parents: settingsFolderId ? [settingsFolderId] : undefined,
+      },
+      media: {
+        mimeType: "application/json",
+        body: JSON.stringify(buildUnifiedSettingsFileContent(finalProps), null, 2),
+      },
+      fields: "id,appProperties,parents",
+    });
+    canonical = { id: created?.data?.id || "", appProperties: created?.data?.appProperties || finalProps };
+  }
+
+  if (settingsFolderId && canonical?.id) {
+    await moveFileIntoFolderIfNeeded({ drive, fileId: canonical.id, folderId: settingsFolderId });
+  }
+
+  const staleFileIds = files
+    .map((f) => String(f?.id || "").trim())
+    .filter((id) => id && id !== String(canonical?.id || "").trim());
+  for (const fileId of staleFileIds) {
+    await markDriveFileAsTrashedSafe({ drive, fileId });
+  }
+
+  return { file: canonical, migrated: true };
+}
+
+async function upsertUnifiedUserSettingsPatch({ drive, authUser, patch }) {
+  const ensured = await ensureUnifiedUserSettingsFile({ drive, authUser, createIfMissing: true });
+  if (!ensured?.file?.id) throw new Error("Failed to prepare user settings file");
+  const nextProps = mergeAppProperties(ensured.file.appProperties || {}, patch || {});
   const updated = await drive.files.update({
-    fileId: existing.id,
+    fileId: ensured.file.id,
     requestBody: { appProperties: nextProps },
+    media: {
+      mimeType: "application/json",
+      body: JSON.stringify(buildUnifiedSettingsFileContent(nextProps), null, 2),
+    },
     fields: "id,appProperties",
   });
-  if (toolFolderId && existing?.id) {
-    await moveFileIntoFolderIfNeeded({ drive, fileId: existing.id, folderId: toolFolderId });
-  }
   return {
-    fileId: updated?.data?.id || existing.id,
-    settings: getThemeFromProps(updated?.data?.appProperties || nextProps),
+    fileId: updated?.data?.id || ensured.file.id,
+    appProperties: updated?.data?.appProperties || nextProps,
+  };
+}
+
+async function upsertThemeSettings({
+  drive,
+  authUser,
+  accent,
+  scope,
+  navPosition = "sidebar",
+  navLabelMode = "icon",
+}) {
+  const basePatch = buildUserSettingsBasePatch(authUser);
+  const patch = {
+    ...basePatch,
+    [APP_PROP_THEME_ACCENT_KEY]: String(accent),
+    [APP_PROP_THEME_SCOPE_KEY]: String(scope),
+    [APP_PROP_NAV_POSITION_KEY]: String(navPosition),
+    [APP_PROP_NAV_LABEL_MODE_KEY]: String(navLabelMode),
+  };
+  const result = await upsertUnifiedUserSettingsPatch({ drive, authUser, patch });
+  return {
+    fileId: result.fileId,
+    settings: getThemeFromProps(result.appProperties),
   };
 }
 
@@ -253,77 +453,20 @@ async function upsertFormDefaultsSettings({
   defaultPlace,
   defaultHost,
 }) {
-  const sub = String(authUser?.sub || "").trim();
-  if (!sub) throw new Error("Missing auth user sub");
-  const toolFolderId = await ensureToolFolderId({ drive, authUser });
-  const existing = await findUserSettingsFileOrNull({
-    drive,
-    authUser,
-    kind: SETTINGS_KIND_FORM_DEFAULTS,
-  });
+  const basePatch = buildUserSettingsBasePatch(authUser);
   const patch = {
-    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
-    [APP_PROP_TYPE_KEY]: APP_PROP_TYPE_USER_SETTINGS,
-    [APP_PROP_SETTINGS_KIND_KEY]: SETTINGS_KIND_FORM_DEFAULTS,
-    [APP_PROP_OWNER_SUB_KEY]: sub,
-    ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
-    ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
+    ...basePatch,
     [APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY]: String(participantNameCount),
     [APP_PROP_DEFAULT_PRICE_KEY]: String(defaultPrice),
     [APP_PROP_DEFAULT_MEETING_TITLE_KEY]: String(defaultMeetingTitle || ""),
     [APP_PROP_DEFAULT_PLACE_KEY]: String(defaultPlace || ""),
     [APP_PROP_DEFAULT_HOST_KEY]: String(defaultHost || ""),
   };
-
-  if (!existing?.id) {
-    const created = await drive.files.create({
-      requestBody: {
-        name: "gformgen_user_settings_form_defaults.json",
-        mimeType: "application/json",
-        appProperties: patch,
-        parents: toolFolderId ? [toolFolderId] : undefined,
-      },
-      fields: "id,appProperties",
-    });
-    return {
-      fileId: created?.data?.id || "",
-      settings: getFormDefaultsFromProps(created?.data?.appProperties),
-    };
-  }
-
-  const nextProps = mergeAppProperties(existing?.appProperties || {}, patch);
-  const updated = await drive.files.update({
-    fileId: existing.id,
-    requestBody: { appProperties: nextProps },
-    fields: "id,appProperties",
-  });
-  if (toolFolderId && existing?.id) {
-    await moveFileIntoFolderIfNeeded({ drive, fileId: existing.id, folderId: toolFolderId });
-  }
+  const result = await upsertUnifiedUserSettingsPatch({ drive, authUser, patch });
   return {
-    fileId: updated?.data?.id || existing.id,
-    settings: getFormDefaultsFromProps(updated?.data?.appProperties || nextProps),
+    fileId: result.fileId,
+    settings: getFormDefaultsFromProps(result.appProperties),
   };
-}
-
-async function findUserSettingsFileOrNull({ drive, authUser, kind }) {
-  const sub = String(authUser?.sub || "").trim();
-  if (!sub) return null;
-  const q = [
-    "trashed = false",
-    `appProperties has { key='${APP_PROP_APP_KEY}' and value='${APP_PROP_APP_VALUE}' }`,
-    `appProperties has { key='${APP_PROP_TYPE_KEY}' and value='${APP_PROP_TYPE_USER_SETTINGS}' }`,
-    `appProperties has { key='${APP_PROP_SETTINGS_KIND_KEY}' and value='${String(kind || "").trim()}' }`,
-    `appProperties has { key='${APP_PROP_OWNER_SUB_KEY}' and value='${sub}' }`,
-  ].join(" and ");
-  const result = await drive.files.list({
-    q,
-    orderBy: "modifiedTime desc",
-    pageSize: 10,
-    fields: "files(id,name,modifiedTime,appProperties)",
-  });
-  const files = result?.data?.files || [];
-  return files?.[0] || null;
 }
 
 async function upsertDefaultScheduleSettings({
@@ -336,23 +479,9 @@ async function upsertDefaultScheduleSettings({
   endMinute,
   deadlineDaysBefore,
 }) {
-  const sub = String(authUser?.sub || "").trim();
-  if (!sub) throw new Error("Missing auth user sub");
-  const toolFolderId = await ensureToolFolderId({ drive, authUser });
-
-  const existing = await findUserSettingsFileOrNull({
-    drive,
-    authUser,
-    kind: SETTINGS_KIND_DEFAULT_SCHEDULE,
-  });
-
+  const basePatch = buildUserSettingsBasePatch(authUser);
   const patch = {
-    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
-    [APP_PROP_TYPE_KEY]: APP_PROP_TYPE_USER_SETTINGS,
-    [APP_PROP_SETTINGS_KIND_KEY]: SETTINGS_KIND_DEFAULT_SCHEDULE,
-    [APP_PROP_OWNER_SUB_KEY]: sub,
-    ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
-    ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
+    ...basePatch,
     [APP_PROP_DEFAULT_WEEKS_KEY]: String(weeksOffset),
     [APP_PROP_DEFAULT_HOUR_KEY]: String(hour),
     [APP_PROP_DEFAULT_MINUTE_KEY]: String(minute),
@@ -360,37 +489,13 @@ async function upsertDefaultScheduleSettings({
     [APP_PROP_DEFAULT_END_MINUTE_KEY]: String(endMinute),
     [APP_PROP_DEFAULT_DEADLINE_DAYS_BEFORE_KEY]: String(deadlineDaysBefore),
   };
-
-  if (!existing?.id) {
-    const created = await drive.files.create({
-      requestBody: {
-        name: "gformgen_user_settings.json",
-        mimeType: "application/json",
-        appProperties: patch,
-        parents: toolFolderId ? [toolFolderId] : undefined,
-      },
-      fields: "id,appProperties",
-    });
-    return {
-      fileId: created?.data?.id || "",
-      settings: getDefaultScheduleFromProps(created?.data?.appProperties),
-    };
-  }
-
-  const nextProps = mergeAppProperties(existing?.appProperties || {}, patch);
-  const updated = await drive.files.update({
-    fileId: existing.id,
-    requestBody: { appProperties: nextProps },
-    fields: "id,appProperties",
-  });
-  if (toolFolderId && existing?.id) {
-    await moveFileIntoFolderIfNeeded({ drive, fileId: existing.id, folderId: toolFolderId });
-  }
+  const result = await upsertUnifiedUserSettingsPatch({ drive, authUser, patch });
   return {
-    fileId: updated?.data?.id || existing.id,
-    settings: getDefaultScheduleFromProps(updated?.data?.appProperties || nextProps),
+    fileId: result.fileId,
+    settings: getDefaultScheduleFromProps(result.appProperties),
   };
 }
+
 // (Template/GAS copy mode was removed; keep form creation simple and predictable.)
 
 /* =========================
@@ -970,10 +1075,10 @@ app.get("/api/user-settings/default-schedule", async (req, res) => {
     if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
     const drive = google.drive({ version: "v3", auth: authClient });
-    const file = await findUserSettingsFileOrNull({
+    const { file } = await ensureUnifiedUserSettingsFile({
       drive,
       authUser,
-      kind: SETTINGS_KIND_DEFAULT_SCHEDULE,
+      createIfMissing: false,
     });
     const settings = getDefaultScheduleFromProps(file?.appProperties);
     return res.json({ settings, hasSaved: Boolean(file?.id) });
@@ -996,10 +1101,10 @@ app.post("/api/user-settings/default-schedule", async (req, res) => {
     if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
     const weeksOffset =
-      parseIntInRange(req?.body?.weeksOffset, { min: 1, max: 3 }) ?? null;
-    const hour = parseIntInRange(req?.body?.hour, { min: 8, max: 20 }) ?? null;
+      parseIntInRange(req?.body?.weeksOffset, { min: 1, max: 6 }) ?? null;
+    const hour = parseIntInRange(req?.body?.hour, { min: 7, max: 19 }) ?? null;
     const minute = parseIntInRange(req?.body?.minute, { min: 0, max: 59 }) ?? null;
-    const endHour = parseIntInRange(req?.body?.endHour, { min: 8, max: 23 }) ?? null;
+    const endHour = parseIntInRange(req?.body?.endHour, { min: 7, max: 22 }) ?? null;
     const endMinute = parseIntInRange(req?.body?.endMinute, { min: 0, max: 59 }) ?? null;
     const deadlineDaysBefore =
       parseIntInRange(req?.body?.deadlineDaysBefore, { min: 1, max: 14 }) ?? null;
@@ -1048,7 +1153,11 @@ app.get("/api/user-settings/theme", async (req, res) => {
     if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
     const drive = google.drive({ version: "v3", auth: authClient });
-    const file = await findUserSettingsFileOrNull({ drive, authUser, kind: SETTINGS_KIND_THEME });
+    const { file } = await ensureUnifiedUserSettingsFile({
+      drive,
+      authUser,
+      createIfMissing: false,
+    });
     const settings = getThemeFromProps(file?.appProperties);
     return res.json({ settings, hasSaved: Boolean(file?.id) });
   } catch (err) {
@@ -1071,8 +1180,22 @@ app.post("/api/user-settings/theme", async (req, res) => {
     const scope = THEME_SCOPE_SIDEBAR;
     if (!accent) return res.status(400).json({ error: "Invalid accent color" });
 
+    const navPosition = VALID_NAV_POSITIONS.includes(req?.body?.navPosition)
+      ? req.body.navPosition
+      : "sidebar";
+    const navLabelMode = VALID_NAV_LABEL_MODES.includes(req?.body?.navLabelMode)
+      ? req.body.navLabelMode
+      : "icon";
+
     const drive = google.drive({ version: "v3", auth: authClient });
-    const result = await upsertThemeSettings({ drive, authUser, accent, scope });
+    const result = await upsertThemeSettings({
+      drive,
+      authUser,
+      accent,
+      scope,
+      navPosition,
+      navLabelMode,
+    });
     return res.json({ ok: true, settings: result.settings });
   } catch (err) {
     console.error(err);
@@ -1091,10 +1214,10 @@ app.get("/api/user-settings/form-defaults", async (req, res) => {
     if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
     const drive = google.drive({ version: "v3", auth: authClient });
-    const file = await findUserSettingsFileOrNull({
+    const { file } = await ensureUnifiedUserSettingsFile({
       drive,
       authUser,
-      kind: SETTINGS_KIND_FORM_DEFAULTS,
+      createIfMissing: false,
     });
     const settings = getFormDefaultsFromProps(file?.appProperties);
     return res.json({ settings, hasSaved: Boolean(file?.id) });
@@ -1147,6 +1270,97 @@ app.post("/api/user-settings/form-defaults", async (req, res) => {
     return res
       .status(status || 500)
       .json({ error: message || "Failed to save form defaults" });
+  }
+});
+
+/* 全設定を1回で保存（高速化） */
+app.post("/api/user-settings/all", async (req, res) => {
+  try {
+    const savedTokens = getTokens(req);
+    if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+    const authClient = makeAuthedOAuthClientOrNull(req);
+    if (!authClient) return res.status(401).json({ error: "Not logged in" });
+    const authUser = await getAuthUserOrNull(req, res);
+    if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+    const body = req?.body || {};
+    const schedule = body.defaultSchedule || {};
+    const formDefaults = body.formDefaults || {};
+    const theme = body.theme || {};
+
+    const weeksOffset =
+      parseIntInRange(schedule.weeksOffset, { min: 1, max: 6 }) ?? 6;
+    const hour = parseIntInRange(schedule.hour, { min: 7, max: 19 }) ?? 15;
+    let minute = parseIntInRange(schedule.minute, { min: 0, max: 59 }) ?? 0;
+    const endHour = parseIntInRange(schedule.endHour, { min: 7, max: 22 }) ?? 16;
+    let endMinute = parseIntInRange(schedule.endMinute, { min: 0, max: 59 }) ?? 0;
+    if (minute % 15 !== 0) minute = Math.round(minute / 15) * 15;
+    if (endMinute % 15 !== 0) endMinute = Math.round(endMinute / 15) * 15;
+    const deadlineDaysBefore =
+      parseIntInRange(schedule.deadlineDaysBefore, { min: 1, max: 14 }) ?? 2;
+
+    const participantNameCount =
+      parseIntInRange(formDefaults.participantNameCount, { min: 1, max: 20 }) ?? 1;
+    const defaultPrice =
+      parseIntInRange(formDefaults.defaultPrice, { min: 0, max: 99999999 }) ?? 0;
+    const defaultMeetingTitle =
+      String(formDefaults.defaultMeetingTitle || "").trim().slice(0, 120) ||
+      "会津産学懇話会 月定例会";
+    const defaultPlace =
+      String(formDefaults.defaultPlace || "").trim().slice(0, 120) ||
+      "会津若松ワシントンホテル";
+    const defaultHost =
+      String(formDefaults.defaultHost || "").trim().slice(0, 120) ||
+      "会津産学懇話会";
+
+    const accent =
+      normalizeHexColor(theme.accent) ||
+      normalizeHexColor(process.env.GF_THEME_ACCENT) ||
+      "#6b7280";
+    const navPosition = VALID_NAV_POSITIONS.includes(theme.navPosition)
+      ? theme.navPosition
+      : "sidebar";
+    const navLabelMode = VALID_NAV_LABEL_MODES.includes(theme.navLabelMode)
+      ? theme.navLabelMode
+      : "icon";
+
+    const basePatch = buildUserSettingsBasePatch(authUser);
+    const patch = {
+      ...basePatch,
+      [APP_PROP_DEFAULT_WEEKS_KEY]: String(weeksOffset),
+      [APP_PROP_DEFAULT_HOUR_KEY]: String(hour),
+      [APP_PROP_DEFAULT_MINUTE_KEY]: String(minute),
+      [APP_PROP_DEFAULT_END_HOUR_KEY]: String(endHour),
+      [APP_PROP_DEFAULT_END_MINUTE_KEY]: String(endMinute),
+      [APP_PROP_DEFAULT_DEADLINE_DAYS_BEFORE_KEY]: String(deadlineDaysBefore),
+      [APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY]: String(participantNameCount),
+      [APP_PROP_DEFAULT_PRICE_KEY]: String(defaultPrice),
+      [APP_PROP_DEFAULT_MEETING_TITLE_KEY]: defaultMeetingTitle,
+      [APP_PROP_DEFAULT_PLACE_KEY]: defaultPlace,
+      [APP_PROP_DEFAULT_HOST_KEY]: defaultHost,
+      [APP_PROP_THEME_ACCENT_KEY]: accent,
+      [APP_PROP_THEME_SCOPE_KEY]: THEME_SCOPE_SIDEBAR,
+      [APP_PROP_NAV_POSITION_KEY]: navPosition,
+      [APP_PROP_NAV_LABEL_MODE_KEY]: navLabelMode,
+    };
+
+    const drive = google.drive({ version: "v3", auth: authClient });
+    const result = await upsertUnifiedUserSettingsPatch({ drive, authUser, patch });
+
+    return res.json({
+      ok: true,
+      settings: {
+        defaultSchedule: getDefaultScheduleFromProps(result.appProperties),
+        formDefaults: getFormDefaultsFromProps(result.appProperties),
+        theme: getThemeFromProps(result.appProperties),
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    const { status, message } = extractGoogleApiError(err);
+    return res
+      .status(status || 500)
+      .json({ error: message || "Failed to save settings" });
   }
 });
 
@@ -1317,7 +1531,7 @@ async function readDriveJsonFileOrNull(drive, fileId) {
 async function upsertFormSnapshot({ drive, authUser, formId, questionIdToTitle }) {
   const id = String(formId || "").trim();
   if (!id) return { ok: false };
-  const toolFolderId = await ensureToolFolderId({ drive, authUser });
+  const settingsFolderId = await ensureSettingsFolderId({ drive, authUser });
   const existing = await findFormSnapshotFileOrNull({ drive, formId: id });
   const payload = {
     schemaVersion: FORM_SNAPSHOT_SCHEMA_VERSION,
@@ -1340,7 +1554,7 @@ async function upsertFormSnapshot({ drive, authUser, formId, questionIdToTitle }
         name: `gformgen_form_snapshot_${id}.json`,
         mimeType: "application/json",
         appProperties: patch,
-        parents: toolFolderId ? [toolFolderId] : undefined,
+        parents: settingsFolderId ? [settingsFolderId] : undefined,
       },
       media: {
         mimeType: "application/json",
@@ -1363,8 +1577,8 @@ async function upsertFormSnapshot({ drive, authUser, formId, questionIdToTitle }
     },
     fields: "id",
   });
-  if (toolFolderId && existing?.id) {
-    await moveFileIntoFolderIfNeeded({ drive, fileId: existing.id, folderId: toolFolderId });
+  if (settingsFolderId && existing?.id) {
+    await moveFileIntoFolderIfNeeded({ drive, fileId: existing.id, folderId: settingsFolderId });
   }
   return { ok: true, fileId: existing.id };
 }
@@ -1407,6 +1621,56 @@ async function ensureToolFolderId({ drive, authUser }) {
       name: DRIVE_TOOL_FOLDER_NAME,
       mimeType: "application/vnd.google-apps.folder",
       appProperties: patch,
+    },
+    fields: "id",
+  });
+  return String(created?.data?.id || "");
+}
+
+async function findSettingsFolderOrNull({ drive, authUser, toolFolderId }) {
+  const sub = String(authUser?.sub || "").trim();
+  const parentId = String(toolFolderId || "").trim();
+  if (!sub || !parentId) return null;
+  const q = [
+    "trashed = false",
+    "mimeType = 'application/vnd.google-apps.folder'",
+    `'${parentId}' in parents`,
+    `name = '${DRIVE_SETTINGS_FOLDER_NAME}'`,
+    `appProperties has { key='${APP_PROP_APP_KEY}' and value='${APP_PROP_APP_VALUE}' }`,
+    `appProperties has { key='${APP_PROP_TYPE_KEY}' and value='${APP_PROP_TYPE_SETTINGS_FOLDER}' }`,
+    `appProperties has { key='${APP_PROP_OWNER_SUB_KEY}' and value='${sub}' }`,
+  ].join(" and ");
+  const result = await drive.files.list({
+    q,
+    orderBy: "modifiedTime desc",
+    pageSize: 5,
+    fields: "files(id,name,modifiedTime,appProperties,parents)",
+  });
+  const files = result?.data?.files || [];
+  return files?.[0] || null;
+}
+
+async function ensureSettingsFolderId({ drive, authUser }) {
+  const toolFolderId = await ensureToolFolderId({ drive, authUser });
+  if (!toolFolderId) return "";
+  const found = await findSettingsFolderOrNull({ drive, authUser, toolFolderId });
+  if (found?.id) return String(found.id);
+
+  const sub = String(authUser?.sub || "").trim();
+  if (!sub) return "";
+  const patch = {
+    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+    [APP_PROP_TYPE_KEY]: APP_PROP_TYPE_SETTINGS_FOLDER,
+    [APP_PROP_OWNER_SUB_KEY]: sub,
+    ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
+    ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
+  };
+  const created = await drive.files.create({
+    requestBody: {
+      name: DRIVE_SETTINGS_FOLDER_NAME,
+      mimeType: "application/vnd.google-apps.folder",
+      appProperties: patch,
+      parents: [toolFolderId],
     },
     fields: "id",
   });
@@ -1701,6 +1965,14 @@ app.post("/api/forms/create", async (req, res) => {
     });
 
     const formattedMeetingRange = formatDateTimeRangeJP(datetime, endDatetime);
+    const meetingInfoLines = [
+      `・日時： ${formattedMeetingRange}`,
+      `・場所： ${place}`,
+      safePrice > 0 ? `・参加費（1人あたり）：￥ ${safePrice}` : null,
+      `・〆切： ${formatDateJP(deadline)}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     /* =========================
        説明文（通知文）
@@ -1713,13 +1985,10 @@ ${formTitle}
 ご出欠につきまして、以下のフォームよりご回答くださるようお願い申し上げます。
 
 【会合情報】
-・日時： ${formattedMeetingRange}
-・場所： ${place}
-・参加費（1人あたり）：${safePrice <= 0 ? "無料" : `￥ ${safePrice}`}
-・〆切： ${formatDateJP(deadline)}
+${meetingInfoLines}
 
 【お問合せ先】
-・主催者： ${host} 事務局
+ ${host} 事務局
 （TEL）0242-23-8511
 `.trim();
 
@@ -1990,7 +2259,7 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
     });
     const { responses } = await listAllFormResponses(forms, formId);
 
-    const rows = responses.map((r) => {
+    const parsedRows = responses.map((r) => {
       const answers = r?.answers || {};
 
       const row = {
@@ -2075,14 +2344,32 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
       return row;
     });
 
+    // Closed forms can still receive "empty" submissions from the Google Forms UI.
+    // Do not show them as blank/absent rows in normal aggregation.
+    let postCloseSubmissionCount = 0;
+    const rows = parsedRows.filter((row) => {
+      const isEmpty =
+        !String(row?.company || "").trim() &&
+        !String(row?.role || "").trim() &&
+        !String(row?.name || "").trim() &&
+        !String(row?.attendance || "").trim() &&
+        !String(row?.remarks || "").trim();
+      if (isEmpty) {
+        postCloseSubmissionCount += 1;
+        return false;
+      }
+      return true;
+    });
+
     void logEvent({
       type: "forms_responses_list_succeeded",
       formId,
       mode: "formatted",
       count: rows.length,
+      postCloseSubmissionCount,
     });
 
-    return res.json({ formId, rows });
+    return res.json({ formId, rows, postCloseSubmissionCount });
   } catch (err) {
     console.error(err);
     void logEvent({
@@ -2127,11 +2414,36 @@ app.get("/api/forms/:formId/summary", async (req, res) => {
     });
     const { responses } = await listAllFormResponses(forms, formId);
 
-    const responseCount = responses.length;
+    let responseCount = 0;
+    let postCloseSubmissionCount = 0;
     let attendeeCount = 0;
 
     for (const r of responses) {
       const answers = r?.answers || {};
+      let hasMeaningfulAnswer = false;
+
+      for (const [questionId, answer] of Object.entries(answers)) {
+        const title = questionIdToTitle.get(String(questionId)) || "";
+        if (!title) continue;
+        const value = String(getAnswerValue(answer) || "").trim();
+        if (!value) continue;
+        if (
+          title.includes("事業所") ||
+          title.includes("出席") ||
+          title.includes("備考") ||
+          isParticipantNameTitle(title) ||
+          isParticipantRoleTitle(title)
+        ) {
+          hasMeaningfulAnswer = true;
+          break;
+        }
+      }
+      if (!hasMeaningfulAnswer) {
+        postCloseSubmissionCount += 1;
+        continue;
+      }
+      responseCount += 1;
+
       // 出席者数は「出席回答」のみを集計対象とする
       let attendance = "";
       for (const [questionId, answer] of Object.entries(answers)) {
@@ -2157,8 +2469,9 @@ app.get("/api/forms/:formId/summary", async (req, res) => {
       formId,
       responseCount,
       attendeeCount,
+      postCloseSubmissionCount,
     });
-    return res.json({ formId, responseCount, attendeeCount });
+    return res.json({ formId, responseCount, attendeeCount, postCloseSubmissionCount });
   } catch (err) {
     console.error(err);
     const { status, message } = extractGoogleApiError(err);
@@ -2480,17 +2793,17 @@ app.post("/api/forms/:formId/close", async (req, res) => {
     const baseName = stripTagsFromTitle(currentName) || currentName || baseTitle;
     const nextName = baseName;
 
+    const currentDesc = String(current?.data?.info?.description || "");
+    const host = extractHostFromFormDescription(currentDesc);
+
     /** @type {any[]} */
     const requests = [];
-    // Title + Description: show "closed" notice at the top.
+    // Title + Description: replace with a concise closed notice only.
     requests.push({
       updateFormInfo: {
         info: {
           title: nextTitle,
-          // Keep existing description but prepend a short notice (best-effort).
-          description: [CLOSED_NOTICE_TITLE, "", String(current?.data?.info?.description || "")]
-            .join("\n")
-            .trim(),
+          description: buildClosedNoticeDescription(host),
         },
         updateMask: "title,description",
       },
@@ -2510,7 +2823,7 @@ app.post("/api/forms/:formId/close", async (req, res) => {
       createItem: {
         item: {
           title: CLOSED_NOTICE_TITLE,
-          description: CLOSED_NOTICE_DESCRIPTION,
+          description: buildClosedNoticeDescription(host),
           textItem: {},
         },
         location: { index: 0 },

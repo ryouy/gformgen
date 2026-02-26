@@ -37,7 +37,7 @@ export default function SettingsPage() {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
 
-  const [weeksOffset, setWeeksOffset] = useState(1);
+  const [weeksOffset, setWeeksOffset] = useState(6);
   const [hour, setHour] = useState(15);
   const [minute, setMinute] = useState(0);
   const [endHour, setEndHour] = useState(16);
@@ -52,6 +52,8 @@ export default function SettingsPage() {
     { label: "ローズ", value: "#f43f5e" },
   ];
   const [accent, setAccent] = useState("#6b7280");
+  const [navPosition, setNavPosition] = useState("sidebar");
+  const [navLabelMode, setNavLabelMode] = useState("icon");
   const previewMuiTheme = useMemo(
     () => buildMuiTheme({ accent, scope: "sidebar" }),
     [accent]
@@ -102,7 +104,7 @@ export default function SettingsPage() {
         if (r1.status === "fulfilled" && r1.value.ok) {
           const data = await r1.value.json().catch(() => ({}));
           const s = data?.settings || {};
-          setWeeksOffset(Number(s?.weeksOffset) || 1);
+          setWeeksOffset(Number(s?.weeksOffset) || 6);
           setHour(Number(s?.hour) || 15);
           setMinute(Number(s?.minute) || 0);
           setEndHour(Number(s?.endHour) || 16);
@@ -113,6 +115,14 @@ export default function SettingsPage() {
           const data = await r2.value.json().catch(() => ({}));
           const s = data?.settings || {};
           setAccent(normalizeHex(s?.accent) || "#6b7280");
+          setNavPosition(
+            ["sidebar", "bottom-left", "top-left"].includes(s?.navPosition)
+              ? s.navPosition
+              : "sidebar"
+          );
+          setNavLabelMode(
+            ["icon", "text", "both"].includes(s?.navLabelMode) ? s.navLabelMode : "icon"
+          );
         }
         if (r3.status === "fulfilled" && r3.value.ok) {
           const data = await r3.value.json().catch(() => ({}));
@@ -141,74 +151,68 @@ export default function SettingsPage() {
     setNotice(null);
     setSavingAll(true);
     try {
-      const [rSchedule, rDefaults, rTheme] = await Promise.allSettled([
-        fetch(apiUrl("/user-settings/default-schedule"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
+      const res = await fetch(apiUrl("/user-settings/all"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          defaultSchedule: {
             weeksOffset,
             hour,
             minute,
             endHour,
             endMinute,
             deadlineDaysBefore,
-          }),
-        }),
-        fetch(apiUrl("/user-settings/form-defaults"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
+          },
+          formDefaults: {
             participantNameCount,
             defaultPrice: Number(defaultPrice) || 0,
             defaultMeetingTitle,
             defaultPlace,
             defaultHost,
-          }),
+          },
+          theme: {
+            accent,
+            scope: "sidebar",
+            navPosition,
+            navLabelMode,
+          },
         }),
-        fetch(apiUrl("/user-settings/theme"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ accent, scope: "sidebar" }),
-        }),
-      ]);
+      });
 
-      const failures = [];
-
-      const check = async (label, settled) => {
-        if (settled.status !== "fulfilled") {
-          failures.push(label);
-          return null;
-        }
-        if (settled.value.status === 401) {
-          setLoggedIn(false);
-          failures.push(label);
-          return null;
-        }
-        const data = await settled.value.json().catch(() => ({}));
-        if (!settled.value.ok) {
-          failures.push(label);
-          return { ok: false, data };
-        }
-        return { ok: true, data };
-      };
-
-      await check("開催日程", rSchedule);
-      await check("入力人数", rDefaults);
-      const c = await check("テーマ", rTheme);
-
-      if (failures.length > 0) {
-        setError(`保存に失敗しました：${failures.join(" / ")}`);
+      if (res.status === 401) {
+        setLoggedIn(false);
+        setError("ログインが必要です。");
         return;
       }
 
-      // Apply theme immediately (confirm it's reflected).
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || "保存に失敗しました。");
+        return;
+      }
+
+      const s = data?.settings?.theme || {
+        accent,
+        scope: "sidebar",
+        navPosition,
+        navLabelMode,
+      };
+
+      // Apply theme and layout immediately (confirm it's reflected).
       try {
-        const s = c?.data?.settings || { accent, scope: "sidebar" };
         applyAppThemeToDom(s);
         window.localStorage.setItem("gformgen.theme", JSON.stringify(s));
+        window.dispatchEvent(
+          new CustomEvent("gformgen:theme", {
+            detail: {
+              accent: s.accent,
+              scope: s.scope,
+              navPosition: s.navPosition,
+              navLabelMode: s.navLabelMode,
+            },
+          })
+        );
       } catch {
         // ignore
       }
@@ -298,7 +302,7 @@ export default function SettingsPage() {
                       }}
                       helperText={
                         Number(defaultPrice) <= 0
-                          ? "0の場合、フォーム本文には「参加費（1人あたり）：無料」と表示されます。"
+                          ? "無料の場合、フォーム本文には「参加費」は表示されません。"
                           : ""
                       }
                     />
@@ -331,6 +335,9 @@ export default function SettingsPage() {
                       <MenuItem value={1}>本日 + 1週間</MenuItem>
                       <MenuItem value={2}>本日 + 2週間</MenuItem>
                       <MenuItem value={3}>本日 + 3週間</MenuItem>
+                      <MenuItem value={4}>本日 + 4週間</MenuItem>
+                      <MenuItem value={5}>本日 + 5週間</MenuItem>
+                      <MenuItem value={6}>本日 + 6週間</MenuItem>
                     </TextField>
                     <div style={{ fontWeight: 800, color: "var(--app-text)" }}>開始時刻</div>
                     <TimePicker
@@ -344,7 +351,7 @@ export default function SettingsPage() {
                       disabled={loading || savingAll}
                       disabledTime={() => ({
                         disabledHours: () =>
-                          Array.from({ length: 24 }, (_, i) => i).filter((h) => h < 8 || h > 20),
+                          Array.from({ length: 24 }, (_, i) => i).filter((h) => h < 7 || h > 19),
                         disabledMinutes: () =>
                           Array.from({ length: 60 }, (_, i) => i).filter((m) => m % 15 !== 0),
                       })}
@@ -367,7 +374,7 @@ export default function SettingsPage() {
                       disabled={loading || savingAll}
                       disabledTime={() => ({
                         disabledHours: () =>
-                          Array.from({ length: 24 }, (_, i) => i).filter((h) => h < 8 || h > 23),
+                          Array.from({ length: 24 }, (_, i) => i).filter((h) => h < 7 || h > 22),
                         disabledMinutes: () =>
                           Array.from({ length: 60 }, (_, i) => i).filter((m) => m % 15 !== 0),
                       })}
@@ -481,6 +488,62 @@ export default function SettingsPage() {
             </Box>
           </Box>
       </section>
+
+          <section style={{ marginBottom: 24 }}>
+            <h3 style={{ margin: "8px 0 12px", color: "var(--app-text)" }}>
+              タブ・ナビゲーション
+            </h3>
+            <Box
+              sx={{
+                border: "1px solid rgba(148,163,184,0.35)",
+                borderRadius: 2,
+                padding: 2,
+                background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+              }}
+            >
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                  gap: 2,
+                  alignItems: "start",
+                }}
+              >
+                <Box>
+                  <div style={{ fontWeight: 800, color: "var(--app-text)", marginBottom: 8 }}>
+                    タブの配置
+                  </div>
+                  <TextField
+                    select
+                    fullWidth
+                    value={navPosition}
+                    onChange={(e) => setNavPosition(String(e.target.value))}
+                    disabled={loading || savingAll}
+                  >
+                    <MenuItem value="sidebar">左サイドバー（標準）</MenuItem>
+                    <MenuItem value="bottom-left">左下にまとめて表示</MenuItem>
+                    <MenuItem value="top-left">左上にまとめて表示</MenuItem>
+                  </TextField>
+                </Box>
+                <Box>
+                  <div style={{ fontWeight: 800, color: "var(--app-text)", marginBottom: 8 }}>
+                    タブの表示
+                  </div>
+                  <TextField
+                    select
+                    fullWidth
+                    value={navLabelMode}
+                    onChange={(e) => setNavLabelMode(String(e.target.value))}
+                    disabled={loading || savingAll}
+                  >
+                    <MenuItem value="icon">アイコンのみ</MenuItem>
+                    <MenuItem value="text">文字のみ</MenuItem>
+                    <MenuItem value="both">アイコン＋文字</MenuItem>
+                  </TextField>
+                </Box>
+              </Box>
+            </Box>
+          </section>
 
           {/* (フォーム既定値は上の「作成画面の既定値」に統合) */}
           <Box sx={{ marginTop: 1 }}>

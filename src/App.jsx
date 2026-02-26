@@ -99,7 +99,12 @@ export default function App() {
     let cancelled = false;
     const run = async () => {
       if (!isLoggedIn) {
-        setAppTheme({ accent: "#6b7280", scope: "sidebar" });
+        setAppTheme({
+          accent: "#6b7280",
+          scope: "sidebar",
+          navPosition: "sidebar",
+          navLabelMode: "icon",
+        });
         applyAppThemeToDom({ accent: "#6b7280", scope: "sidebar" });
         themeAppliedRef.current = false;
         return;
@@ -111,7 +116,12 @@ export default function App() {
           const cached = window.localStorage.getItem("gformgen.theme");
           if (cached) {
             const s = JSON.parse(cached);
-            setAppTheme(s);
+            setAppTheme({
+              accent: s?.accent || "#6b7280",
+              scope: s?.scope || "sidebar",
+            navPosition: s?.navPosition || "sidebar",
+            navLabelMode: s?.navLabelMode || "icon",
+            });
             applyAppThemeToDom(s);
           }
         } catch {
@@ -126,7 +136,12 @@ export default function App() {
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
         const s = data?.settings || {};
-        setAppTheme(s);
+        setAppTheme({
+          accent: s?.accent || "#6b7280",
+          scope: s?.scope || "sidebar",
+            navPosition: s?.navPosition || "sidebar",
+            navLabelMode: s?.navLabelMode || "icon",
+        });
         applyAppThemeToDom(s);
         try {
           window.localStorage.setItem("gformgen.theme", JSON.stringify(s));
@@ -143,12 +158,18 @@ export default function App() {
     };
   }, [isLoggedIn]);
 
-  // Keep appTheme in sync when Settings page toggles dark mode etc.
+  // Keep appTheme in sync when Settings page toggles theme/layout etc.
   useEffect(() => {
     const onTheme = (e) => {
       const d = e?.detail || {};
       if (!d?.accent) return;
-      setAppTheme(d);
+      setAppTheme((prev) => ({
+        ...prev,
+        accent: d.accent,
+        scope: d.scope ?? prev.scope,
+        navPosition: d.navPosition ?? prev.navPosition,
+        navLabelMode: d.navLabelMode ?? prev.navLabelMode,
+      }));
     };
     window.addEventListener("gformgen:theme", onTheme);
     return () => window.removeEventListener("gformgen:theme", onTheme);
@@ -279,6 +300,8 @@ export default function App() {
       isLoggedIn={isLoggedIn}
       onLogin={handleLogin}
       onLogout={handleLogout}
+      navPosition={appTheme?.navPosition || "sidebar"}
+      navLabelMode={appTheme?.navLabelMode || "icon"}
     />
     </ThemeProvider>
   );

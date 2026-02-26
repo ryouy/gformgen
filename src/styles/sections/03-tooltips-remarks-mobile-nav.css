@@ -54,6 +54,9 @@
 .sangaku-nav-label {
   font-size: 0.76rem;
   line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .remarks-list {

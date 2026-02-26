@@ -36,6 +36,7 @@ export default function StatsViewer({ initialFormId }) {
   const [editUrl, setEditUrl] = useState("");
   const [acceptingResponses, setAcceptingResponses] = useState(null);
   const [rows, setRows] = useState([]);
+  const [postCloseSubmissionCount, setPostCloseSubmissionCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -56,6 +57,8 @@ export default function StatsViewer({ initialFormId }) {
   const autoRefreshTimerRef = useRef(null);
   const lastAutoRefreshAtRef = useRef(0);
   const fetchInFlightRef = useRef(false);
+  const fetchRowsAbortRef = useRef(null);
+  const fetchRowsLatestIdRef = useRef(null);
 
   const rememberRecentFormId = useCallback((formId) => {
     const id = String(formId || "").trim();
@@ -163,36 +166,54 @@ export default function StatsViewer({ initialFormId }) {
     }
   }, []);
 
+  const FETCH_ROWS_TIMEOUT_MS = 30000;
+
   const fetchRows = useCallback(
     async (formId, options = {}) => {
       if (!formId) return;
       const silent = Boolean(options?.silent);
 
+      // 前のリクエストをキャンセル（競合・ぐるぐる防止）
+      fetchRowsAbortRef.current?.abort();
+      fetchRowsAbortRef.current = new AbortController();
+      fetchRowsLatestIdRef.current = formId;
+      const ac = fetchRowsAbortRef.current;
+      const signal = ac.signal;
+
+      // 長時間ハング時のタイムアウト
+      const timeoutId = setTimeout(() => ac.abort(), FETCH_ROWS_TIMEOUT_MS);
+
       if (!silent) {
-        // 先に「空メッセージ」を引っ込めて、"読み込み中" に一本化
         setEmptyDelayDone(false);
         setLoading(true);
         setError(null);
       } else {
         setRefreshing(true);
       }
+      let wasAborted = false;
       try {
         const res = await fetch(apiUrl(`/forms/${encodeURIComponent(formId)}/responses`), {
           credentials: "include",
+          signal,
         });
+        clearTimeout(timeoutId);
+        if (fetchRowsLatestIdRef.current !== formId) return;
         if (res.status === 401) {
           notifyUnauthorized();
           throw new Error("Not logged in");
         }
         const data = await res.json().catch(() => ({}));
+        if (fetchRowsLatestIdRef.current !== formId) return;
         if (!res.ok) {
           const message = data?.error || "Failed to fetch responses";
           throw new Error(message);
         }
 
         const nextRows = data?.rows;
+        const nextPostCloseCount = Number(data?.postCloseSubmissionCount) || 0;
         if (nextRows == null) {
           setRows([]);
+          setPostCloseSubmissionCount(nextPostCloseCount);
           return;
         }
         if (!Array.isArray(nextRows)) {
@@ -200,16 +221,26 @@ export default function StatsViewer({ initialFormId }) {
         }
 
         setRows(nextRows);
+        setPostCloseSubmissionCount(nextPostCloseCount);
       } catch (e) {
+        clearTimeout(timeoutId);
+        if (e?.name === "AbortError") {
+          wasAborted = true;
+          return;
+        }
         console.error(e);
-        // タブ復帰時の自動更新では、UIをガクッと変えない（表示は維持）
+        if (fetchRowsLatestIdRef.current !== formId) return;
         if (!silent) {
           setRows([]);
+          setPostCloseSubmissionCount(0);
           setError(e?.message || "Failed to fetch responses");
         }
       } finally {
-        if (!silent) setLoading(false);
-        setRefreshing(false);
+        clearTimeout(timeoutId);
+        if (!wasAborted) {
+          if (!silent) setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     []
@@ -412,6 +443,7 @@ export default function StatsViewer({ initialFormId }) {
 
       setSelectedFormId("");
       setRows([]);
+      setPostCloseSubmissionCount(0);
       setFormUrl("");
       setEditUrl("");
       setAcceptingResponses(null);
@@ -446,6 +478,7 @@ export default function StatsViewer({ initialFormId }) {
         setSelectedFormId={setSelectedFormId}
         rememberRecentFormId={rememberRecentFormId}
         setRows={setRows}
+        setPostCloseSubmissionCount={setPostCloseSubmissionCount}
         setEmptyDelayDone={setEmptyDelayDone}
         setError={setError}
         setFormUrl={setFormUrl}
@@ -488,6 +521,22 @@ export default function StatsViewer({ initialFormId }) {
 
           {/* 全体集計テーブル（常に表示） */}
           <DataTable participants={expandedRows} />
+          {postCloseSubmissionCount > 0 && (
+            <div
+              style={{
+                marginTop: "0.75rem",
+                padding: "0.7rem 0.85rem",
+                borderRadius: 10,
+                border: "1px solid rgba(251,191,36,0.35)",
+                background: "rgba(254,243,199,0.45)",
+                color: "#92400e",
+                fontWeight: 800,
+                textAlign: "center",
+              }}
+            >
+              〆切後の送信：{postCloseSubmissionCount}件（通常の集計には含めていません）
+            </div>
+          )}
         </>
       )}
 

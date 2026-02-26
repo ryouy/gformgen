@@ -19,7 +19,7 @@ export default function DateTimeInput({ value, onChange }) {
         disabledTime: () => ({
           disabledHours: () =>
             Array.from({ length: 24 }, (_, i) => i).filter(
-              (h) => h < 8 || h > 20
+              (h) => h < 7 || h > 19
             ),
         }),
       }}

@@ -23,6 +23,7 @@ export default function StatsToolbar({
   setSelectedFormId,
   rememberRecentFormId,
   setRows,
+  setPostCloseSubmissionCount,
   setEmptyDelayDone,
   setError,
   setFormUrl,
@@ -49,10 +50,12 @@ export default function StatsToolbar({
         <div className="stats-toolbar-center" aria-label="フォーム選択">
           <TextField
             select
+            disabled={visibleForms.length === 0}
             value={selectedFormId}
             onChange={(e) => {
               const id = String(e?.target?.value || "");
               setEmptyDelayDone(false);
+              setPostCloseSubmissionCount(0);
               setSelectedFormId(id);
               if (id) rememberRecentFormId?.(id);
               setError(null);
@@ -73,6 +76,13 @@ export default function StatsToolbar({
             SelectProps={{
               displayEmpty: true,
               renderValue: (value) => {
+                if (visibleForms.length === 0) {
+                  return (
+                    <span style={{ color: "rgba(100,116,139,0.95)", fontWeight: 600 }}>
+                      フォームがまだありません
+                    </span>
+                  );
+                }
                 if (!value) {
                   return (
                     <span style={{ color: "rgba(100,116,139,0.95)", fontWeight: 600 }}>

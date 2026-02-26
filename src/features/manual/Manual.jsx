@@ -69,7 +69,7 @@ export default function ManualPage() {
               <li>画面の「ログイン」ボタンを押します</li>
               <li>Googleの画面が出たら、使用するアカウントを選び「許可」します</li>
               <li>
-                元の画面に戻ったら、左メニュー上部が「ログアウト」表示になっていれば成功です
+                元の画面に戻ったら、左メニュー下部の <b>ログアウトアイコン</b> が有効になっていれば成功です
               </li>
             </ol>
             <h5 style={{ margin: "12px 0 6px" }}>うまくいかないとき</h5>
@@ -114,6 +114,14 @@ export default function ManualPage() {
               </li>
               <li>
                 <b>参加費（1人あたり）</b>（円で入力）
+                <div
+                  style={{
+                    color: "color-mix(in srgb, var(--app-text) 65%, transparent)",
+                    fontWeight: 800,
+                  }}
+                >
+                  0を入力すると「無料」として扱われます
+                </div>
               </li>
               <li>
                 <b>参加者の上限入力人数（1回答あたり）</b>
@@ -201,6 +209,9 @@ export default function ManualPage() {
               集計画面のボタンから、Excel用のCSVや印刷用PDFを出力できます。
             </p>
             <ul style={{ marginTop: 8 }}>
+              <li>
+                まず集計画面で <b>フォームを選択</b> すると、CSV/PDFボタンが表示されます
+              </li>
               <li>
                 <b>CSV</b>：一覧データをExcel等で加工しやすい形式で保存します
               </li>
@@ -323,14 +334,21 @@ export default function ManualPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Googleフォームの画面の見方と基本操作（動画）
+                  Googleフォームの基本操作（動画）
                 </a>
-              </li>
-              
-            
+              </li>  
               <li>
                 <a
-                  href="https://support.google.com/docs/answer/2839737"
+                  href="https://www.g-workspace.jp/googleworkspace-reference/forms/not-accept/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  フォームの回答受付を締切る方法
+                </a>
+              </li>
+              <li>
+                <a
+                  href="https://support.google.com/docs/topic/6063584?hl=ja&sjid=9074137316317041802-NC"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -339,22 +357,15 @@ export default function ManualPage() {
               </li>
               <li>
                 <a
-                  href="https://support.google.com/docs/answer/2839739"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Google公式ヘルプ：質問の追加・変更方法
-                </a>
-              </li>
-              <li>
-                <a
-                  href="https://support.google.com/docs/answer/139706"
+                  href="https://support.google.com/docs/topic/6063592?hl=ja&sjid=9074137316317041802-NC"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   Google公式ヘルプ：回答の確認方法
                 </a>
               </li>
+              
+              
             </ul>
           </>
         ),
@@ -392,6 +403,24 @@ export default function ManualPage() {
               <li>
                 <b>二次元バーコードが読み取りづらい</b>：画面の明るさを上げるか、表示サイズを大きくして再表示してください。
               </li>
+              <li>
+                <b>〆切日を過ぎたのに回答が止まらない</b>：作成画面の〆切日は案内用です。回答受付を止めるには集計画面の <b>〆切</b> を押してください。
+              </li>
+              <li>
+                <b>参加費を無料表示にしたい</b>：参加費を <b>0</b> にすると、フォーム本文は「参加費（1人あたり）：無料」と表示されます。
+              </li>
+              <li>
+                <b>会合情報の内容を後から直したい</b>：集計画面の <b>ペンアイコン</b> からGoogleフォーム編集画面を開いて修正できます。
+              </li>
+              <li>
+                <b>フォーム確認と編集の違いは？</b>：<b>目アイコン</b> は回答画面、<b>ペンアイコン</b> は編集画面を開きます。
+              </li>
+              <li>
+                <b>備考ボタンが表示されない</b>：備考欄に入力が1件もない場合は表示されません。入力があると自動表示されます。
+              </li>
+              <li>
+                <b>削除したフォームを戻したい</b>：削除はGoogle Driveのゴミ箱に移動です。一定期間内であればDrive側で復元できます。
+              </li>
             </ul>
           </>
         ),
@@ -405,9 +434,36 @@ export default function ManualPage() {
               <li>
                 <b>作成画面の既定値</b>：会合名 / 開催日（本日+何週間後） / 開始時刻 / 終了時刻 /
                 〆切日（開催日-何日前） / 場所 / 主催者名 / 参加者上限人数 / 参加費 を設定できます。
+                <div
+                  style={{
+                    color: "color-mix(in srgb, var(--app-text) 65%, transparent)",
+                    fontWeight: 800,
+                  }}
+                >
+                  既定参加費を0にすると、作成画面の初期表示は「無料」になります
+                </div>
               </li>
               <li>
                 <b>テーマカラー</b>：アプリ全体のアクセント色（ボタンや選択状態の色）を変更できます。
+              </li>
+              <li>
+                <b>タブの配置</b>：ナビゲーションの表示位置を選べます。
+                <ul style={{ marginTop: 4, marginBottom: 0 }}>
+                  <li>左サイドバー（標準）</li>
+                  <li>左上にまとめて表示</li>
+                  <li>左下にまとめて表示</li>
+                </ul>
+              </li>
+              <li>
+                <b>タブの表示</b>：各タブのアイコン・文字の表示を切り替えられます。
+                <ul style={{ marginTop: 4, marginBottom: 0 }}>
+                  <li>アイコンのみ</li>
+                  <li>文字のみ</li>
+                  <li>アイコン＋文字</li>
+                </ul>
+              </li>
+              <li>
+                <b>URLで直接移動</b>：`/create` / `/stats` / `/settings` / `/manual` で各ページを直接開けます。
               </li>
             </ul>
           </>
@@ -420,7 +476,7 @@ export default function ManualPage() {
           <>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>氏名</b>：松下 稜（会津大学 計算社会学研究室）
+                <b>氏名</b>：松下 稜（会津大学 計算社会科学研究室）
               </li>
               <li>
                 <b>Mail</b>：

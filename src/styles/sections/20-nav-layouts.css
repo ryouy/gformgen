@@ -1,0 +1,127 @@
+/* -------------------------------
+🧭 タブ配置モード（top-left / bottom-left）
+--------------------------------*/
+
+/* 左上・左下の浮動グループ（横並び・コンパクト） */
+.sangaku-nav-float {
+  position: fixed;
+  z-index: 1100;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--sidebar-bg);
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.sangaku-nav-float--top-left {
+  top: 10px;
+  left: 10px;
+}
+
+.sangaku-nav-float--bottom-left {
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  left: 10px;
+}
+
+.sangaku-nav-float-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 6px;
+  border-right: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.sangaku-nav-float-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+.sangaku-nav-float .sangaku-nav-item {
+  height: 36px;
+  min-width: 36px;
+  padding: 0 8px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.sangaku-nav-float .sangaku-nav-item--subtle {
+  height: 36px;
+  min-width: 36px;
+  padding: 0 8px;
+}
+
+.sangaku-nav-float .sangaku-nav-item svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.sangaku-nav-float .sangaku-nav-label {
+  font-size: 0.72rem;
+}
+
+/* アイコンのみのときは正方形に */
+[data-nav-label-mode="icon"] .sangaku-nav-item {
+  justify-content: center;
+  min-width: 44px;
+  padding: 0;
+}
+
+[data-nav-label-mode="icon"] .sangaku-nav-float .sangaku-nav-item {
+  min-width: 36px;
+  padding: 0;
+}
+
+/* テキストのみのとき */
+[data-nav-label-mode="text"] .sangaku-nav-item svg {
+  display: none;
+}
+
+[data-nav-label-mode="text"] .sangaku-nav-item .sangaku-lock-badge {
+  display: none;
+}
+
+[data-nav-label-mode="text"] .sangaku-nav-item.is-locked::before {
+  content: "🔒";
+  font-size: 0.85em;
+  margin-right: 4px;
+}
+
+/* モバイル時の調整 */
+@media (max-width: 720px) {
+  .sangaku-nav-float {
+    padding: 5px 6px;
+    gap: 4px;
+  }
+
+  .sangaku-nav-float .sangaku-nav-item {
+    height: 34px;
+    min-width: 34px;
+    padding: 0 6px;
+  }
+
+  .sangaku-nav-float .sangaku-nav-item svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .sangaku-nav-float--top-left {
+    top: 8px;
+    left: 8px;
+  }
+
+  .sangaku-nav-float--bottom-left {
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    left: 8px;
+  }
+}

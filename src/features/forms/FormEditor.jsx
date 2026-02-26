@@ -24,7 +24,7 @@ export default function FormEditor({
   };
 
   const buildDefaultSchedule = ({
-    weeksOffset = 1,
+    weeksOffset = 6,
     hour = 15,
     minute = 0,
     endHour = 16,
@@ -32,7 +32,7 @@ export default function FormEditor({
     deadlineDaysBefore = 2,
   } = {}) => {
     const dt = dayjs()
-      .add(Number(weeksOffset) || 1, "week")
+      .add(Number(weeksOffset) || 6, "week")
       .hour(Number(hour) || 15)
       .minute(Number(minute) || 0)
       .second(0);
@@ -286,7 +286,7 @@ export default function FormEditor({
             }}
             helperText={
               Number(formData.price) <= 0
-                ? "フォームには「参加費（1人あたり）：無料」と表示されます。"
+                ? "無料の場合、フォーム本文には「参加費」は表示されません。"
                 : ""
             }
           />

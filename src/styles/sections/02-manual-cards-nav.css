@@ -79,7 +79,8 @@
   border: 1px solid rgba(15, 23, 42, 0.14);
   background: rgba(248, 250, 252, 0.96);
   border-radius: 16px;
-  height: 54px;
+  min-height: 62px;
+  height: 62px;
   width: 100%;
   cursor: pointer;
   display: flex;
@@ -93,9 +94,24 @@
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-.sangaku-nav-item svg {
-  /* アイコンが小さく見えないように視認性を少し上げる */
+.sangaku-nav-item > svg {
+  /* メインアイコン：改行で縮まないように */
+  flex-shrink: 0;
+  min-width: 22px;
+  min-height: 22px;
   stroke-width: 2.2;
+}
+
+.sangaku-nav-item svg {
+  stroke-width: 2.2;
+}
+
+.sangaku-nav-item .sangaku-nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .sangaku-nav-item:hover {

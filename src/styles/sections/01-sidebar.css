@@ -22,6 +22,12 @@
   backdrop-filter: blur(10px);
 }
 
+/* ラベル表示時は幅を広げて文字が切れないように */
+.sangaku-shell[data-nav-label-mode="both"] .sangaku-sidebar,
+.sangaku-shell[data-nav-label-mode="text"] .sangaku-sidebar {
+  width: 128px;
+}
+
 .sangaku-brand {
   /* ロゴはフラットに（枠/影なし） */
   background: transparent;
@@ -78,7 +84,8 @@
 
 .sangaku-nav-item--subtle {
   /* 目立ちすぎない下段用 */
-  height: 46px;
+  min-height: 54px;
+  height: 54px;
   border-radius: 14px;
   background: transparent;
   box-shadow: none;

@@ -14,7 +14,7 @@ export default function EndDateTimeInput({ value, onChange }) {
       showSecond={false}
       disabledTime={() => ({
         disabledHours: () =>
-          Array.from({ length: 24 }, (_, i) => i).filter((h) => h < 8 || h > 20),
+          Array.from({ length: 24 }, (_, i) => i).filter((h) => h < 7 || h > 22),
         disabledMinutes: () =>
           Array.from({ length: 60 }, (_, i) => i).filter((m) => m % 15 !== 0),
       })}
