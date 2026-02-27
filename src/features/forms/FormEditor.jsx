@@ -81,13 +81,19 @@ export default function FormEditor({
     return "";
   }, [formData.datetime, formData.endDatetime, formData.deadline]);
 
+  const normalizeToHalfWidthDigits = (s) =>
+    String(s ?? "").replace(/[０-９]/g, (c) =>
+      String.fromCharCode(c.charCodeAt(0) - 0xfee0)
+    );
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (["participantNameCount", "price", "title", "place", "host"].includes(name)) {
       participantDirtyRef.current = true;
     }
     if (name === "price") setHasEditedPrice(true);
-    setFormData({ ...formData, [name]: value });
+    const finalValue = name === "price" ? normalizeToHalfWidthDigits(value) : value;
+    setFormData({ ...formData, [name]: finalValue });
   };
 
   /** 開催日時変更 → 〆切自動更新 */
@@ -276,7 +282,7 @@ export default function FormEditor({
             value={!hasEditedPrice && Number(formData.price) <= 0 ? "" : formData.price}
             onChange={handleChange}
             fullWidth
-            inputProps={{ min: 0, step: 100 }}
+            inputProps={{ min: 0, step: 100, className: "no-spin" }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">

@@ -1,6 +1,17 @@
 /* -------------------------------
 📅 MUI 日時ピッカー調整
 --------------------------------*/
+
+/* 参加費など数値入力：スピナー（上下ボタン）非表示 */
+input[type="number"].no-spin::-webkit-inner-spin-button,
+input[type="number"].no-spin::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"].no-spin {
+  -moz-appearance: textfield;
+}
+
 .MuiDialog-paper {
   border-radius: 16px !important;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;

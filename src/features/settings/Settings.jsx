@@ -17,6 +17,12 @@ import { apiUrl, authUrl } from "../../lib/apiBase";
 import { applyAppThemeToDom } from "../../lib/appTheme";
 import { buildMuiTheme } from "../../lib/muiTheme";
 
+function normalizeToHalfWidthDigits(s) {
+  return String(s ?? "").replace(/[０-９]/g, (c) =>
+    String.fromCharCode(c.charCodeAt(0) - 0xfee0)
+  );
+}
+
 function normalizeHex(input) {
   const s = String(input || "").trim();
   if (!s) return "";
@@ -286,13 +292,19 @@ export default function SettingsPage() {
                       onChange={(e) => setDefaultHost(String(e.target.value || ""))}
                       disabled={loading || savingAll}
                     />
-                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>参加費</div>
+                    <div style={{ fontWeight: 800, color: "var(--app-text)" }}>参加費（1人あたり）</div>
                     <TextField
                       type="number"
-                      value={defaultPrice}
-                      onChange={(e) => setDefaultPrice(Number(e.target.value) || 0)}
+                      value={defaultPrice === 0 ? "" : defaultPrice}
+                      onChange={(e) =>
+                        setDefaultPrice(
+                          Number(normalizeToHalfWidthDigits(e.target.value)) || 0
+                        )
+                      }
                       disabled={loading || savingAll}
-                      inputProps={{ min: 0, step: 100 }}
+                      fullWidth
+                      placeholder="0で無料"
+                      inputProps={{ min: 0, step: 100, className: "no-spin" }}
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">

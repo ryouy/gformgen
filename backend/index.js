@@ -162,8 +162,15 @@ function normalizeHexColor(input) {
   return "";
 }
 
+function normalizeToHalfWidthDigits(s) {
+  return String(s ?? "").replace(/[０-９]/g, (c) =>
+    String.fromCharCode(c.charCodeAt(0) - 0xfee0)
+  );
+}
+
 function parseIntInRange(v, { min, max } = {}) {
-  const n = Number.parseInt(String(v ?? ""), 10);
+  const normalized = normalizeToHalfWidthDigits(v);
+  const n = Number.parseInt(normalized, 10);
   if (!Number.isFinite(n)) return null;
   if (typeof min === "number" && n < min) return null;
   if (typeof max === "number" && n > max) return null;
@@ -2347,7 +2354,7 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
     // Closed forms can still receive "empty" submissions from the Google Forms UI.
     // Do not show them as blank/absent rows in normal aggregation.
     let postCloseSubmissionCount = 0;
-    const rows = parsedRows.filter((row) => {
+    const filtered = parsedRows.filter((row) => {
       const isEmpty =
         !String(row?.company || "").trim() &&
         !String(row?.role || "").trim() &&
@@ -2359,6 +2366,13 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
         return false;
       }
       return true;
+    });
+
+    // タイムスタンプ降順（最新到着が一番上）
+    const rows = filtered.slice().sort((a, b) => {
+      const ta = new Date(a?.submittedAt || 0).getTime();
+      const tb = new Date(b?.submittedAt || 0).getTime();
+      return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
     });
 
     void logEvent({
