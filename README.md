@@ -1,8 +1,10 @@
 # FMT [Form Management Tool]
 
-[Try here](https://gfca-aizu.web.app) · [日本語版 README](READMEjp.md)
+###[日本語版 README](READMEjp.md)
 
-A user guide in easy-to-understand Japanese is available: [userGuide.pdf](https://gfca-aizu.web.app/user-guide).
+[Try here](https://gfca-aizu.web.app) 
+
+A user [guide](https://gfca-aizu.web.app/user-guide) in easy-to-understand Japanese is available.
 
 A small admin tool to **programmatically create, rediscover, and aggregate Google Forms**.
 
