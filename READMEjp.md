@@ -1,14 +1,14 @@
 # FMT（フォーム管理ツール）
 
-[こちらで試す](https://gfca-aizu.web.app)
-English: [README.md](README.md)
-ユーザーガイド: [userGuide.pdf](https://gfca-aizu.web.app/user-guide)
+[Try here](https://gfca-aizu.web.app)
+
+* ユーザーガイド: [userGuide.pdf](https://gfca-aizu.web.app/user-guide)*
 
 ---
 
 ## 概要
 
-Google Forms を **作成・再発見・集計**するための軽量管理ツール。
+Google Forms を **作成・再発見・集計**するための軽量管理ツール
 
 * データベースなし
 * 永続層は Google Drive / Forms のみ
@@ -21,8 +21,8 @@ Google 側が唯一の正。
 
 ## 設計思想
 
-> Google Drive をデータベースとして扱う。
-> それ以外はすべてビューである。
+> Google Drive をデータベースとして扱う
+> それ以外はすべてビューである
 
 * フォームのメタデータは保存しない
 * 常に再構築可能な構造を保つ
@@ -168,7 +168,6 @@ cd .. && npm run dev
 
 ## デプロイ（Firebase Hosting + Functions）
 
-このリポジトリには `firebase.json` が含まれます。
 
 ### 構成
 
@@ -201,21 +200,4 @@ firebase deploy
 * `index.html` → no-cache
 * `/assets/**` → 長期キャッシュ（immutable）
 
----
 
-## まとめ
-
-* データベースなし
-* サーバ側状態なし
-* 永続層は Google のみ
-* 再構築可能な設計
-
----
-
-さらに尖らせるなら：
-
-* 思想をもっと強く出す（宣言的にする）
-* あるいは README をより簡潔に削ぎ落とす（1/2サイズに圧縮）
-* 逆にアーキテクチャ図を追加する
-
-どの方向に仕上げたいですか？
