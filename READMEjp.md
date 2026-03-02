@@ -1,7 +1,6 @@
 # FMT（フォーム管理ツール）
 
-### [Try here](https://gfca-aizu.web.app)
-[ユーザガイド](https://gfca-aizu.web.app/user-guide)
+[Try here](https://gfca-aizu.web.app) / [ユーザガイド](https://gfca-aizu.web.app/user-guide)
 ---
 
 ## 概要
