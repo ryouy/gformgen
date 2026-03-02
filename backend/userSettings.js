@@ -30,13 +30,19 @@ import {
   VALID_NAV_POSITIONS,
   VALID_NAV_LABEL_MODES,
 } from "./constants.js";
-import { parseIntInRange, mergeAppProperties, normalizeHexColor } from "./utils.js";
+import { parseIntInRange, mergeAppProperties, normalizeHexColor, extractGoogleApiError } from "./utils.js";
 import {
   ensureSettingsFolderId,
   listUserSettingsFiles,
   moveFileIntoFolderIfNeeded,
   markDriveFileAsTrashedSafe,
 } from "./drive.js";
+import { google } from "googleapis";
+import {
+  getTokens,
+  makeAuthedOAuthClientOrNull,
+  getAuthUserOrNull,
+} from "./auth.js";
 
 export function getDefaultScheduleFromProps(appProperties) {
   const props = appProperties || {};
@@ -328,4 +334,304 @@ export async function upsertDefaultScheduleSettings({
     fileId: result.fileId,
     settings: getDefaultScheduleFromProps(result.appProperties),
   };
+}
+
+export function mountUserSettingsRoutes(app) {
+  app.get("/api/user-settings/default-schedule", async (req, res) => {
+    try {
+      const savedTokens = getTokens(req);
+      if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+      const authClient = makeAuthedOAuthClientOrNull(req);
+      if (!authClient) return res.status(401).json({ error: "Not logged in" });
+      const authUser = await getAuthUserOrNull(req, res);
+      if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+      const drive = google.drive({ version: "v3", auth: authClient });
+      const { file } = await ensureUnifiedUserSettingsFile({
+        drive,
+        authUser,
+        createIfMissing: false,
+      });
+      const settings = getDefaultScheduleFromProps(file?.appProperties);
+      return res.json({ settings, hasSaved: Boolean(file?.id) });
+    } catch (err) {
+      console.error(err);
+      const { status, message } = extractGoogleApiError(err);
+      return res
+        .status(status || 500)
+        .json({ error: message || "Failed to get settings" });
+    }
+  });
+
+  app.post("/api/user-settings/default-schedule", async (req, res) => {
+    try {
+      const savedTokens = getTokens(req);
+      if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+      const authClient = makeAuthedOAuthClientOrNull(req);
+      if (!authClient) return res.status(401).json({ error: "Not logged in" });
+      const authUser = await getAuthUserOrNull(req, res);
+      if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+      const weeksOffset =
+        parseIntInRange(req?.body?.weeksOffset, { min: 1, max: 6 }) ?? null;
+      const hour = parseIntInRange(req?.body?.hour, { min: 7, max: 19 }) ?? null;
+      const minute = parseIntInRange(req?.body?.minute, { min: 0, max: 59 }) ?? null;
+      const endHour = parseIntInRange(req?.body?.endHour, { min: 7, max: 22 }) ?? null;
+      const endMinute = parseIntInRange(req?.body?.endMinute, { min: 0, max: 59 }) ?? null;
+      const deadlineDaysBefore =
+        parseIntInRange(req?.body?.deadlineDaysBefore, { min: 1, max: 14 }) ?? null;
+
+      if (
+        weeksOffset == null ||
+        hour == null ||
+        minute == null ||
+        endHour == null ||
+        endMinute == null ||
+        deadlineDaysBefore == null ||
+        minute % 15 !== 0 ||
+        endMinute % 15 !== 0
+      ) {
+        return res.status(400).json({ error: "Invalid settings payload" });
+      }
+
+      const drive = google.drive({ version: "v3", auth: authClient });
+      const result = await upsertDefaultScheduleSettings({
+        drive,
+        authUser,
+        weeksOffset,
+        hour,
+        minute,
+        endHour,
+        endMinute,
+        deadlineDaysBefore,
+      });
+      return res.json({ ok: true, settings: result.settings });
+    } catch (err) {
+      console.error(err);
+      const { status, message } = extractGoogleApiError(err);
+      return res
+        .status(status || 500)
+        .json({ error: message || "Failed to save settings" });
+    }
+  });
+
+  app.get("/api/user-settings/theme", async (req, res) => {
+    try {
+      const savedTokens = getTokens(req);
+      if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+      const authClient = makeAuthedOAuthClientOrNull(req);
+      if (!authClient) return res.status(401).json({ error: "Not logged in" });
+      const authUser = await getAuthUserOrNull(req, res);
+      if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+      const drive = google.drive({ version: "v3", auth: authClient });
+      const { file } = await ensureUnifiedUserSettingsFile({
+        drive,
+        authUser,
+        createIfMissing: false,
+      });
+      const settings = getThemeFromProps(file?.appProperties);
+      return res.json({ settings, hasSaved: Boolean(file?.id) });
+    } catch (err) {
+      console.error(err);
+      const { status, message } = extractGoogleApiError(err);
+      return res.status(status || 500).json({ error: message || "Failed to get theme" });
+    }
+  });
+
+  app.post("/api/user-settings/theme", async (req, res) => {
+    try {
+      const savedTokens = getTokens(req);
+      if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+      const authClient = makeAuthedOAuthClientOrNull(req);
+      if (!authClient) return res.status(401).json({ error: "Not logged in" });
+      const authUser = await getAuthUserOrNull(req, res);
+      if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+      const accent = normalizeHexColor(req?.body?.accent) || "";
+      const scope = THEME_SCOPE_SIDEBAR;
+      if (!accent) return res.status(400).json({ error: "Invalid accent color" });
+
+      const navPosition = VALID_NAV_POSITIONS.includes(req?.body?.navPosition)
+        ? req.body.navPosition
+        : "sidebar";
+      const navLabelMode = VALID_NAV_LABEL_MODES.includes(req?.body?.navLabelMode)
+        ? req.body.navLabelMode
+        : "icon";
+
+      const drive = google.drive({ version: "v3", auth: authClient });
+      const result = await upsertThemeSettings({
+        drive,
+        authUser,
+        accent,
+        scope,
+        navPosition,
+        navLabelMode,
+      });
+      return res.json({ ok: true, settings: result.settings });
+    } catch (err) {
+      console.error(err);
+      const { status, message } = extractGoogleApiError(err);
+      return res.status(status || 500).json({ error: message || "Failed to save theme" });
+    }
+  });
+
+  app.get("/api/user-settings/form-defaults", async (req, res) => {
+    try {
+      const savedTokens = getTokens(req);
+      if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+      const authClient = makeAuthedOAuthClientOrNull(req);
+      if (!authClient) return res.status(401).json({ error: "Not logged in" });
+      const authUser = await getAuthUserOrNull(req, res);
+      if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+      const drive = google.drive({ version: "v3", auth: authClient });
+      const { file } = await ensureUnifiedUserSettingsFile({
+        drive,
+        authUser,
+        createIfMissing: false,
+      });
+      const settings = getFormDefaultsFromProps(file?.appProperties);
+      return res.json({ settings, hasSaved: Boolean(file?.id) });
+    } catch (err) {
+      console.error(err);
+      const { status, message } = extractGoogleApiError(err);
+      return res
+        .status(status || 500)
+        .json({ error: message || "Failed to get form defaults" });
+    }
+  });
+
+  app.post("/api/user-settings/form-defaults", async (req, res) => {
+    try {
+      const savedTokens = getTokens(req);
+      if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+      const authClient = makeAuthedOAuthClientOrNull(req);
+      if (!authClient) return res.status(401).json({ error: "Not logged in" });
+      const authUser = await getAuthUserOrNull(req, res);
+      if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+      const participantNameCount =
+        parseIntInRange(req?.body?.participantNameCount, { min: 1, max: 20 }) ?? null;
+      const parsedDefaultPrice = parseIntInRange(req?.body?.defaultPrice, { min: 0, max: 99999999 });
+      const defaultPrice = parsedDefaultPrice == null ? 0 : parsedDefaultPrice;
+      const defaultMeetingTitle = String(req?.body?.defaultMeetingTitle || "").trim();
+      const defaultPlace = String(req?.body?.defaultPlace || "").trim();
+      const defaultHost = String(req?.body?.defaultHost || "").trim();
+      if (participantNameCount == null) {
+        return res.status(400).json({ error: "Invalid settings payload" });
+      }
+      if (defaultMeetingTitle.length > 120 || defaultPlace.length > 120 || defaultHost.length > 120) {
+        return res.status(400).json({ error: "Invalid settings payload" });
+      }
+
+      const drive = google.drive({ version: "v3", auth: authClient });
+      const result = await upsertFormDefaultsSettings({
+        drive,
+        authUser,
+        participantNameCount,
+        defaultPrice,
+        defaultMeetingTitle,
+        defaultPlace,
+        defaultHost,
+      });
+      return res.json({ ok: true, settings: result.settings });
+    } catch (err) {
+      console.error(err);
+      const { status, message } = extractGoogleApiError(err);
+      return res
+        .status(status || 500)
+        .json({ error: message || "Failed to save form defaults" });
+    }
+  });
+
+  app.post("/api/user-settings/all", async (req, res) => {
+    try {
+      const savedTokens = getTokens(req);
+      if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
+      const authClient = makeAuthedOAuthClientOrNull(req);
+      if (!authClient) return res.status(401).json({ error: "Not logged in" });
+      const authUser = await getAuthUserOrNull(req, res);
+      if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
+
+      const body = req?.body || {};
+      const schedule = body.defaultSchedule || {};
+      const formDefaults = body.formDefaults || {};
+      const theme = body.theme || {};
+
+      const weeksOffset =
+        parseIntInRange(schedule.weeksOffset, { min: 1, max: 6 }) ?? 6;
+      const hour = parseIntInRange(schedule.hour, { min: 7, max: 19 }) ?? 15;
+      let minute = parseIntInRange(schedule.minute, { min: 0, max: 59 }) ?? 0;
+      const endHour = parseIntInRange(schedule.endHour, { min: 7, max: 22 }) ?? 16;
+      let endMinute = parseIntInRange(schedule.endMinute, { min: 0, max: 59 }) ?? 0;
+      if (minute % 15 !== 0) minute = Math.round(minute / 15) * 15;
+      if (endMinute % 15 !== 0) endMinute = Math.round(endMinute / 15) * 15;
+      const deadlineDaysBefore =
+        parseIntInRange(schedule.deadlineDaysBefore, { min: 1, max: 14 }) ?? 2;
+
+      const participantNameCount =
+        parseIntInRange(formDefaults.participantNameCount, { min: 1, max: 20 }) ?? 1;
+      const defaultPrice =
+        parseIntInRange(formDefaults.defaultPrice, { min: 0, max: 99999999 }) ?? 0;
+      const defaultMeetingTitle =
+        String(formDefaults.defaultMeetingTitle || "").trim().slice(0, 120) ||
+        "会津産学懇話会 月定例会";
+      const defaultPlace =
+        String(formDefaults.defaultPlace || "").trim().slice(0, 120) ||
+        "会津若松ワシントンホテル";
+      const defaultHost =
+        String(formDefaults.defaultHost || "").trim().slice(0, 120) ||
+        "会津産学懇話会";
+
+      const accent =
+        normalizeHexColor(theme.accent) ||
+        normalizeHexColor(process.env.GF_THEME_ACCENT) ||
+        "#6b7280";
+      const navPosition = VALID_NAV_POSITIONS.includes(theme.navPosition)
+        ? theme.navPosition
+        : "sidebar";
+      const navLabelMode = VALID_NAV_LABEL_MODES.includes(theme.navLabelMode)
+        ? theme.navLabelMode
+        : "icon";
+
+      const basePatch = buildUserSettingsBasePatch(authUser);
+      const patch = {
+        ...basePatch,
+        [APP_PROP_DEFAULT_WEEKS_KEY]: String(weeksOffset),
+        [APP_PROP_DEFAULT_HOUR_KEY]: String(hour),
+        [APP_PROP_DEFAULT_MINUTE_KEY]: String(minute),
+        [APP_PROP_DEFAULT_END_HOUR_KEY]: String(endHour),
+        [APP_PROP_DEFAULT_END_MINUTE_KEY]: String(endMinute),
+        [APP_PROP_DEFAULT_DEADLINE_DAYS_BEFORE_KEY]: String(deadlineDaysBefore),
+        [APP_PROP_DEFAULT_PARTICIPANT_NAME_COUNT_KEY]: String(participantNameCount),
+        [APP_PROP_DEFAULT_PRICE_KEY]: String(defaultPrice),
+        [APP_PROP_DEFAULT_MEETING_TITLE_KEY]: defaultMeetingTitle,
+        [APP_PROP_DEFAULT_PLACE_KEY]: defaultPlace,
+        [APP_PROP_DEFAULT_HOST_KEY]: defaultHost,
+        [APP_PROP_THEME_ACCENT_KEY]: accent,
+        [APP_PROP_THEME_SCOPE_KEY]: THEME_SCOPE_SIDEBAR,
+        [APP_PROP_NAV_POSITION_KEY]: navPosition,
+        [APP_PROP_NAV_LABEL_MODE_KEY]: navLabelMode,
+      };
+
+      const drive = google.drive({ version: "v3", auth: authClient });
+      const result = await upsertUnifiedUserSettingsPatch({ drive, authUser, patch });
+
+      return res.json({
+        ok: true,
+        settings: {
+          defaultSchedule: getDefaultScheduleFromProps(result.appProperties),
+          formDefaults: getFormDefaultsFromProps(result.appProperties),
+          theme: getThemeFromProps(result.appProperties),
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      const { status, message } = extractGoogleApiError(err);
+      return res
+        .status(status || 500)
+        .json({ error: message || "Failed to save settings" });
+    }
+  });
 }

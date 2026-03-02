@@ -5,13 +5,15 @@ import {
   APP_PROP_TYPE_TOOL_FOLDER,
   APP_PROP_TYPE_SETTINGS_FOLDER,
   APP_PROP_TYPE_USER_SETTINGS,
+  APP_PROP_TYPE_FORM_SNAPSHOT,
+  APP_PROP_FORM_ID_KEY,
   APP_PROP_OWNER_SUB_KEY,
   APP_PROP_OWNER_EMAIL_KEY,
   APP_PROP_OWNER_NAME_KEY,
   DRIVE_TOOL_FOLDER_NAME,
   DRIVE_SETTINGS_FOLDER_NAME,
 } from "./constants.js";
-import { mergeAppProperties } from "./utils.js";
+import { mergeAppProperties, streamToString } from "./utils.js";
 
 export async function findToolFolderOrNull({ drive, authUser }) {
   const sub = String(authUser?.sub || "").trim();
@@ -150,4 +152,38 @@ export async function listUserSettingsFiles({ drive, authUser }) {
     fields: "files(id,name,modifiedTime,appProperties,parents)",
   });
   return result?.data?.files || [];
+}
+
+export async function findFormSnapshotFileOrNull({ drive, formId }) {
+  const id = String(formId || "").trim();
+  if (!id) return null;
+  const q = [
+    "trashed = false",
+    `appProperties has { key='${APP_PROP_APP_KEY}' and value='${APP_PROP_APP_VALUE}' }`,
+    `appProperties has { key='${APP_PROP_TYPE_KEY}' and value='${APP_PROP_TYPE_FORM_SNAPSHOT}' }`,
+    `appProperties has { key='${APP_PROP_FORM_ID_KEY}' and value='${id}' }`,
+  ].join(" and ");
+  const result = await drive.files.list({
+    q,
+    orderBy: "modifiedTime desc",
+    pageSize: 5,
+    fields: "files(id,name,modifiedTime,appProperties)",
+  });
+  const files = result?.data?.files || [];
+  return files?.[0] || null;
+}
+
+export async function readDriveJsonFileOrNull(drive, fileId) {
+  const id = String(fileId || "").trim();
+  if (!id) return null;
+  const r = await drive.files.get(
+    { fileId: id, alt: "media" },
+    { responseType: "stream" }
+  );
+  const text = await streamToString(r?.data);
+  try {
+    return JSON.parse(String(text || ""));
+  } catch {
+    return null;
+  }
 }

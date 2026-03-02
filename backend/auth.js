@@ -540,3 +540,12 @@ export async function handleAuthMe(req, res) {
       : null,
   });
 }
+
+export function mountAuthRoutes(app) {
+  app.get("/auth/google", handleAuthGoogle);
+  app.get("/api/auth/google", handleAuthGoogle);
+  app.get("/auth/google/callback", handleAuthCallback);
+  app.get("/api/auth/google/callback", handleAuthCallback);
+  app.get("/auth/me", handleAuthMe);
+  app.get("/api/auth/me", handleAuthMe);
+}

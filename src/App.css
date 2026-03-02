@@ -1,5 +1,3 @@
-/* Entry stylesheet.
-   Keep existing imports (src/App.jsx, src/SangakuComponents/*) working,
-   while the actual styles live under src/styles/. */
+/* Entry stylesheet. Actual styles live under src/styles/. */
 
 @import "./styles/index.css";

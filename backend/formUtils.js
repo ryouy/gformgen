@@ -1,15 +1,25 @@
 import {
   APP_PROP_APP_KEY,
   APP_PROP_APP_VALUE,
+  APP_PROP_OWNER_SUB_KEY,
+  APP_PROP_STATUS_KEY,
+  APP_PROP_STATUS_CLOSED,
   APP_PROP_TYPE_KEY,
   APP_PROP_TYPE_FORM_SNAPSHOT,
   APP_PROP_FORM_ID_KEY,
-  APP_PROP_STATUS_KEY,
+  APP_PROP_OWNER_EMAIL_KEY,
+  APP_PROP_OWNER_NAME_KEY,
   FORM_NAME_TAG,
   FORM_CLOSED_TAG,
+  FORM_SNAPSHOT_SCHEMA_VERSION,
 } from "./constants.js";
-import { mergeAppProperties } from "./utils.js";
-import { findFormSnapshotFileOrNull } from "./formUtilsDrive.js";
+import { mergeAppProperties, buildOwnerAppPropertiesPatch } from "./utils.js";
+import {
+  findFormSnapshotFileOrNull,
+  readDriveJsonFileOrNull,
+  ensureSettingsFolderId,
+  moveFileIntoFolderIfNeeded,
+} from "./drive.js";
 
 export const formatDateJP = (isoString, withTime = false) => {
   if (!isoString) return "";
@@ -170,7 +180,7 @@ export function parseAcceptingResponsesFromAppProperties(appProperties) {
   const app = props?.[APP_PROP_APP_KEY];
   const status = props?.[APP_PROP_STATUS_KEY];
   if (String(app || "") !== APP_PROP_APP_VALUE) return null;
-  if (String(status || "") === "closed") return false;
+  if (String(status || "") === APP_PROP_STATUS_CLOSED) return false;
   return true;
 }
 
@@ -204,7 +214,6 @@ export async function buildQuestionIdToTitleMapWithSnapshot({ forms, drive, form
 }
 
 export async function migrateFileToAppProperties({ forms, drive, file, authUser }) {
-  const { APP_PROP_STATUS_CLOSED } = await import("./constants.js");
   const formId = file?.id;
   if (!formId) return { migrated: false };
   const ownedByMe = file?.ownedByMe === true;
@@ -224,7 +233,7 @@ export async function migrateFileToAppProperties({ forms, drive, file, authUser 
         [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
         ...(inferredStatus ? { [APP_PROP_STATUS_KEY]: inferredStatus } : {}),
       },
-      (await import("./utils.js")).buildOwnerAppPropertiesPatch(currentProps, authUser, ownedByMe)
+      buildOwnerAppPropertiesPatch(currentProps, authUser, ownedByMe)
     )
   );
 
@@ -233,8 +242,8 @@ export async function migrateFileToAppProperties({ forms, drive, file, authUser 
     currentName.includes(FORM_NAME_TAG) ||
     currentName.includes(FORM_CLOSED_TAG) ||
     (ownedByMe &&
-      String(currentProps?.["gformgen_owner_sub"] || "").trim() !==
-        String(nextProps?.["gformgen_owner_sub"] || "").trim());
+      String(currentProps?.[APP_PROP_OWNER_SUB_KEY] || "").trim() !==
+        String(nextProps?.[APP_PROP_OWNER_SUB_KEY] || "").trim());
 
   let cleanedTitle = "";
   let needsFormsUpdate = false;
@@ -285,4 +294,59 @@ export async function migrateFileToAppProperties({ forms, drive, file, authUser 
     cleanedName: cleanedName || cleanedTitle || currentName,
     nextProps,
   };
+}
+
+export async function upsertFormSnapshot({ drive, authUser, formId, questionIdToTitle }) {
+  const id = String(formId || "").trim();
+  if (!id) return { ok: false };
+  const settingsFolderId = await ensureSettingsFolderId({ drive, authUser });
+  const existing = await findFormSnapshotFileOrNull({ drive, formId: id });
+  const payload = {
+    schemaVersion: FORM_SNAPSHOT_SCHEMA_VERSION,
+    formId: id,
+    createdAt: new Date().toISOString(),
+    questionIdToTitle,
+  };
+  const patch = {
+    [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
+    [APP_PROP_TYPE_KEY]: APP_PROP_TYPE_FORM_SNAPSHOT,
+    [APP_PROP_FORM_ID_KEY]: id,
+    ...(authUser?.sub ? { [APP_PROP_OWNER_SUB_KEY]: String(authUser.sub) } : {}),
+    ...(authUser?.email ? { [APP_PROP_OWNER_EMAIL_KEY]: String(authUser.email) } : {}),
+    ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
+  };
+
+  if (!existing?.id) {
+    const created = await drive.files.create({
+      requestBody: {
+        name: `gformgen_form_snapshot_${id}.json`,
+        mimeType: "application/json",
+        appProperties: patch,
+        parents: settingsFolderId ? [settingsFolderId] : undefined,
+      },
+      media: {
+        mimeType: "application/json",
+        body: JSON.stringify(payload, null, 2),
+      },
+      fields: "id",
+    });
+    return { ok: Boolean(created?.data?.id), fileId: created?.data?.id || "" };
+  }
+
+  const nextProps = mergeAppProperties(existing?.appProperties || {}, patch);
+  await drive.files.update({
+    fileId: existing.id,
+    requestBody: {
+      appProperties: nextProps,
+    },
+    media: {
+      mimeType: "application/json",
+      body: JSON.stringify(payload, null, 2),
+    },
+    fields: "id",
+  });
+  if (settingsFolderId && existing?.id) {
+    await moveFileIntoFolderIfNeeded({ drive, fileId: existing.id, folderId: settingsFolderId });
+  }
+  return { ok: true, fileId: existing.id };
 }
