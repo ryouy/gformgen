@@ -71,7 +71,6 @@ export default function App({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // 初回表示時にURLを正規化（例: "/" -> "/stats"）
     const canonical = pathFromTab(tabFromPath(window.location.pathname));
     if (window.location.pathname !== canonical) {
       window.history.replaceState({}, "", canonical);

@@ -81,7 +81,6 @@ export function downloadAttendancePdf({ rows, selectedFormId, title, fontData })
     { align: "center" }
   );
 
-  // 備考は「事業所ごとに1回だけ」表示する
   const remarkRows = [];
   const seenCompanies = new Set();
   for (const r of expanded || []) {

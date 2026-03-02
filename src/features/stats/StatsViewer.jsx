@@ -1,4 +1,3 @@
-// src/components/StatsViewer.jsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DataTable from "./DataTable";
 import fontData from "../../assets/fonts/NotoSansJP-Regular.base64.txt?raw";
@@ -86,7 +85,6 @@ export default function StatsViewer({ initialFormId }) {
       if (!res.ok) throw new Error(data?.error || "Failed to list forms");
       const list = Array.isArray(data?.forms) ? data.forms : [];
       setForms(list);
-      // 一覧表示は「リアルタイム集計（キャッシュ不要）」方針なので、都度サマリーは取り直す
       setSummaries({});
       return list;
     } catch (e) {
@@ -133,7 +131,6 @@ export default function StatsViewer({ initialFormId }) {
       const missing = ids.filter((id) => summaries?.[id] == null);
       if (missing.length === 0) return;
 
-      // 軽い並列制限（5件ずつ）
       for (let i = 0; i < missing.length; i += 5) {
         const chunk = missing.slice(i, i + 5);
         await Promise.allSettled(chunk.map((id) => fetchSummary(id)));
@@ -173,14 +170,12 @@ export default function StatsViewer({ initialFormId }) {
       if (!formId) return;
       const silent = Boolean(options?.silent);
 
-      // 前のリクエストをキャンセル（競合・ぐるぐる防止）
       fetchRowsAbortRef.current?.abort();
       fetchRowsAbortRef.current = new AbortController();
       fetchRowsLatestIdRef.current = formId;
       const ac = fetchRowsAbortRef.current;
       const signal = ac.signal;
 
-      // 長時間ハング時のタイムアウト
       const timeoutId = setTimeout(() => ac.abort(), FETCH_ROWS_TIMEOUT_MS);
 
       if (!silent) {
@@ -247,7 +242,6 @@ export default function StatsViewer({ initialFormId }) {
   );
 
   useEffect(() => {
-    // 集計タブ表示時に一覧取得
     void (async () => {
       const list = await fetchForms();
       const stored = window.localStorage.getItem(SELECTED_FORM_ID_STORAGE_KEY);
@@ -261,19 +255,16 @@ export default function StatsViewer({ initialFormId }) {
       setSelectedFormId(nextId);
       rememberRecentFormId(nextId);
       window.localStorage.setItem(SELECTED_FORM_ID_STORAGE_KEY, nextId);
-      // 一覧にサマリー表示するため、まず選択フォームだけ先に取る
       void fetchSummary(nextId);
       await fetchFormInfo(nextId);
       await fetchRows(nextId);
     })();
   }, [fetchForms, fetchFormInfo, fetchRows, fetchSummary, initialFormId, rememberRecentFormId]);
 
-  // 一覧に表示するフォーム分のサマリーを事前取得
   useEffect(() => {
     void prefetchSummaries(forms.map((f) => f.formId));
   }, [forms, prefetchSummaries]);
 
-  // フォーム送信後に戻ってきた時に自動更新（ノーリロード）
   useEffect(() => {
     if (!selectedFormId) return;
 
@@ -281,14 +272,12 @@ export default function StatsViewer({ initialFormId }) {
       if (document.hidden) return;
       if (fetchInFlightRef.current) return;
       const now = Date.now();
-      // focus + visibilitychange の二重発火を抑える（最低1.5秒あける）
       if (now - lastAutoRefreshAtRef.current < 1500) return;
 
       if (autoRefreshTimerRef.current) {
         clearTimeout(autoRefreshTimerRef.current);
       }
       autoRefreshTimerRef.current = setTimeout(async () => {
-        // さらに短い間隔の連打を抑える
         const t = Date.now();
         if (t - lastAutoRefreshAtRef.current < 1500) return;
         lastAutoRefreshAtRef.current = t;
@@ -310,7 +299,6 @@ export default function StatsViewer({ initialFormId }) {
     };
   }, [selectedFormId, fetchRows]);
 
-  // 初回表示・フォーム切替直後は「回答はまだありません」を少し待ってから出す
   useEffect(() => {
     if (!selectedFormId) {
       setEmptyDelayDone(true);
@@ -336,7 +324,6 @@ export default function StatsViewer({ initialFormId }) {
       });
   }, [rows]);
 
-  // 1回答に複数名が入っている場合、表示/CSV/PDFは「1名=1レコード」に展開する
   const expandedRows = useMemo(() => expandParticipantRows(rows), [rows]);
 
   const normalizeTitle = useCallback(

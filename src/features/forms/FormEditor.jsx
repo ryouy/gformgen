@@ -1,4 +1,3 @@
-// src/SangakuComponents/FormEditor.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Stack, TextField, Button, Box, MenuItem, InputAdornment } from "@mui/material";
 import dayjs from "dayjs";
@@ -96,7 +95,6 @@ export default function FormEditor({
     setFormData({ ...formData, [name]: finalValue });
   };
 
-  /** 開催日時変更 → 〆切自動更新 */
   const handleDateTimeChange = (val) => {
     if (!val) return;
     dirtyRef.current = true;
@@ -116,7 +114,6 @@ export default function FormEditor({
     });
   };
 
-  // Load per-user default schedule from backend (Drive-backed settings).
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -170,7 +167,6 @@ export default function FormEditor({
           }
         }
       } catch {
-        // ignore (not logged in / cold start etc.)
       }
     };
     void run();
@@ -180,7 +176,6 @@ export default function FormEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** フォーム作成 */
   const handleCreate = async () => {
     setLoading(true);
     setError(null);

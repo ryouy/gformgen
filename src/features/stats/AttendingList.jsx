@@ -8,7 +8,6 @@ import "../../App.css";
 export default function AttendingList({ participants, meetingTitle }) {
   const [expanded, setExpanded] = useState(false);
 
-  // 出席データ抽出
   const isAttending = (p) => p?.attendance === "出席";
   const attendingList = participants.filter(isAttending);
   const totalAttendance = attendingList.length;
@@ -19,7 +18,6 @@ export default function AttendingList({ participants, meetingTitle }) {
   const displayedList = expanded ? attendingList : attendingList.slice(0, 10);
   const hasMore = attendingList.length > 10 && !expanded;
 
-  // ✅ PDF生成処理
   const handleGeneratePDF = () => {
     try {
       if (attendingList.length === 0) {
@@ -33,18 +31,15 @@ export default function AttendingList({ participants, meetingTitle }) {
         format: "a4",
       });
 
-      // フォント設定（日本語対応）
       pdf.addFileToVFS("NotoSansJP-Regular.ttf", fontData);
       pdf.addFont("NotoSansJP-Regular.ttf", "NotoSansJP", "normal");
       pdf.setFont("NotoSansJP", "normal");
 
-      // タイトル
       pdf.setFontSize(16);
       pdf.text(meetingTitle || "会合名未設定", 14, 18);
       pdf.setFontSize(14);
       pdf.text("出席者一覧", 14, 28);
 
-      // 表データ構築
       const headers = [["No", "事業所名", "役職名", "氏名"]];
       const rows = attendingList.map((p, i) => [
         (i + 1).toString(),
@@ -53,7 +48,6 @@ export default function AttendingList({ participants, meetingTitle }) {
         p.name || "",
       ]);
 
-      // ✅ 表スタイル調整
       pdf.autoTable({
         startY: 36,
         head: headers,
@@ -83,7 +77,6 @@ export default function AttendingList({ participants, meetingTitle }) {
         margin: { left: 12, right: 12 },
       });
 
-      // ✅ 合計行
       const y = pdf.lastAutoTable.finalY + 10;
       pdf.setFontSize(11);
       pdf.text(

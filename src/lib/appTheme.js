@@ -35,21 +35,17 @@ export function applyAppThemeToDom(theme) {
   root.style.setProperty("--accent2", accent2);
   if (rgb) root.style.setProperty("--accent-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
 
-  // Sidebar is always themed.
   if (rgb) {
     root.style.setProperty(
       "--sidebar-bg",
       `linear-gradient(180deg, rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.10), rgba(241, 245, 249, 0.96))`
     );
   }
-  // Dark mode removed.
   delete root.dataset.theme;
 
-  // Notify app (e.g. to update MUI ThemeProvider) without tight coupling.
   try {
     window.dispatchEvent(new CustomEvent("gformgen:theme", { detail: { accent, scope } }));
   } catch {
-    // ignore
   }
 }
 

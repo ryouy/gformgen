@@ -18,9 +18,7 @@ export default function App() {
     try {
       const cached = window.localStorage.getItem("gformgen.theme");
       if (cached) return JSON.parse(cached);
-    } catch {
-      // ignore
-    }
+    } catch {}
     return { accent: "#6b7280", scope: "sidebar" };
   });
 
@@ -38,9 +36,7 @@ export default function App() {
       }
       return { ok: true, loggedIn };
     } catch {
-      // Backend unreachable / cold start etc.
       if (!keepCurrentOnError) {
-        // Default: treat as logged out to avoid stale UI.
         setIsLoggedIn(false);
         if (typeof window !== "undefined") {
           window.localStorage.removeItem("isLoggedIn");
@@ -50,7 +46,6 @@ export default function App() {
     }
   };
 
-  // 🔁 起動時にサーバ基準でログイン状態を同期（OAuth直後はコールドスタート対策でリトライ）
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -60,30 +55,22 @@ export default function App() {
 
     const run = async () => {
       if (justLoggedIn) {
-        // まずはUIをログイン扱いに（/auth/me が一瞬失敗してもサイドバーが古いままにならない）
         setIsLoggedIn(true);
         try {
           window.localStorage.setItem("isLoggedIn", "true");
-        } catch {
-          // ignore
-        }
+        } catch {}
 
-        // URLをきれいにする（login=success を消す。配信パス（BASE_URL）を壊さない）
         try {
           const u = new URL(window.location.href);
           u.searchParams.delete("login");
           window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
-        } catch {
-          // ignore
-        }
+        } catch {}
 
-        // コールドスタート等で /auth/me が落ちることがあるので、少しリトライする
         for (let i = 0; i < 3; i += 1) {
           const r = await syncLoginStateFromServer({ keepCurrentOnError: true });
           if (r.ok && r.loggedIn === true) return;
           await sleep(350 * 2 ** i);
         }
-        // 最後に通常同期（ダメなら未ログインへ）
         await syncLoginStateFromServer({ keepCurrentOnError: false });
         return;
       }
@@ -94,7 +81,6 @@ export default function App() {
     void run();
   }, []);
 
-  // Apply per-user theme after login (Drive-backed settings).
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -110,7 +96,6 @@ export default function App() {
         return;
       }
 
-      // Fast path: apply cached theme immediately (no network wait).
       if (!themeAppliedRef.current) {
         try {
           const cached = window.localStorage.getItem("gformgen.theme");
@@ -158,7 +143,6 @@ export default function App() {
     };
   }, [isLoggedIn]);
 
-  // Keep appTheme in sync when Settings page toggles theme/layout etc.
   useEffect(() => {
     const onTheme = (e) => {
       const d = e?.detail || {};
@@ -177,8 +161,6 @@ export default function App() {
 
   const muiTheme = useMemo(() => buildMuiTheme(appTheme), [appTheme]);
 
-  // Safari等で OAuth 後に BFCache から復帰すると、初期useEffectが再実行されずUIが古いままになることがある。
-  // pageshow で復帰を検知してログイン状態を再同期する。
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -221,7 +203,6 @@ export default function App() {
     return () => window.removeEventListener("pageshow", onPageShow);
   }, []);
 
-  // 念のため：存在しないホームパスに戻されてもアプリ入口（BASE_URL）に寄せる
   useEffect(() => {
     if (typeof window === "undefined") return;
     const base = (import.meta?.env?.BASE_URL || "/").replace(/\/?$/, "/");
@@ -253,7 +234,6 @@ export default function App() {
     window.location.href = authUrl(`/auth/google?returnTo=${returnTo}`);
   };
 
-  // バックエンド再起動などで 401 が出たら、フロントを強制的に未ログインへ戻す
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -267,7 +247,6 @@ export default function App() {
       window.localStorage.removeItem("isLoggedIn");
       window.localStorage.removeItem("sangaku.selectedFormId");
 
-      // ポップアップは出さない（うるさいため）。必要ならコンソールにだけ残す。
       const fallback = wasLoggedIn
         ? "ログイン状態が切れました。再ログインしてください。"
         : "ログインが必要です。";
@@ -281,7 +260,6 @@ export default function App() {
     };
   }, [logoutNoticeShown]);
 
-  // タブ復帰時にサーバ基準で再同期（cookie切れ/関数再デプロイ等に追従）
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onFocus = () => {
@@ -291,7 +269,6 @@ export default function App() {
     return () => window.removeEventListener("focus", onFocus);
   }, []);
 
-  // ホーム画面は廃止し、常にメインUIを表示（ログイン/ログアウトはサイドバーで実施）
   return (
     <ThemeProvider theme={muiTheme}>
       <CssBaseline />

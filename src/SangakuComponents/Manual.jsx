@@ -255,14 +255,12 @@ export default function ManualPage() {
   const detailRef = useRef(null);
 
   useEffect(() => {
-    // 章カードを選んだら説明へスクロール（視線誘導）
     if (!detailRef.current) return;
     const el = detailRef.current;
     requestAnimationFrame(() => {
       try {
         el.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch {
-        // ignore
       }
     });
   }, [selectedId]);

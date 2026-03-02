@@ -205,7 +205,6 @@ export default function SettingsPage() {
         navLabelMode,
       };
 
-      // Apply theme and layout immediately (confirm it's reflected).
       try {
         applyAppThemeToDom(s);
         window.localStorage.setItem("gformgen.theme", JSON.stringify(s));
@@ -220,7 +219,6 @@ export default function SettingsPage() {
           })
         );
       } catch {
-        // ignore
       }
 
       setNotice("保存しました。");

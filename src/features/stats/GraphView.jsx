@@ -19,19 +19,16 @@ export default function GraphView({ participants, partiicipants }) {
     const ctx = canvasRef.current;
     if (!ctx) return;
 
-    // 既にチャートが存在していれば破棄
     if (chartRef.current) {
       chartRef.current.destroy();
       chartRef.current = null;
     }
 
-    // Chart.js が内部で同じ canvas を使っていないかチェック
     const existingChart = Chart.getChart(ctx);
     if (existingChart) {
       existingChart.destroy();
     }
 
-    // 新しいチャートを作成
     chartRef.current = new Chart(ctx, {
       type: "bar",
       data: {
@@ -52,7 +49,6 @@ export default function GraphView({ participants, partiicipants }) {
       },
     });
 
-    // コンポーネントがアンマウントされたときに破棄
     return () => {
       if (chartRef.current) {
         chartRef.current.destroy();

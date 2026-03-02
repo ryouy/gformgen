@@ -12,51 +12,36 @@ const IS_FIREBASE =
   Boolean(process.env.FIREBASE_CONFIG) ||
   Boolean(process.env.K_SERVICE);
 
-// Local dev only: use .env.local to avoid clashing with Firebase Functions Secrets (.env is auto-loaded by firebase-tools)
 if (!IS_FIREBASE) {
   dotenv.config({ path: ".env.local" });
 }
 
-// Firebase Functions params/secrets (also works locally via process.env)
-// NOTE: Use GF_* keys to avoid clashing with firebase-tools auto-loading backend/.env
-// (Cloud Run rejects having both secret + non-secret env vars with the same name)
 const GOOGLE_CLIENT_ID_SECRET = defineSecret("GF_GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET_SECRET = defineSecret("GF_GOOGLE_CLIENT_SECRET");
 const CORS_ORIGIN_SECRET = defineSecret("GF_CORS_ORIGIN");
 const FRONTEND_ORIGIN_SECRET = defineSecret("GF_FRONTEND_ORIGIN");
 const OAUTH_REDIRECT_URI_SECRET = defineSecret("GF_OAUTH_REDIRECT_URI");
-// Keep the name aligned with README/ops docs.
 const SESSION_PASSWORD_SECRET = defineSecret("GF_SESSION_PASSWORD");
 
 function readSecret(name, secretParam) {
   try {
     const v = secretParam?.value?.();
     if (v) return v;
-  } catch {
-    // ignore
-  }
-  // Fallback order:
-  // 1) process.env[GF_*] for local dev without secrets
-  // 2) process.env[legacy key] for backward compatibility
+  } catch {}
   return process.env[name] || "";
 }
 
 function readLegacyAwareSecret(gfKey, legacyKey, secretParam) {
-  // Prefer the secret (GF_*) name
   const v = readSecret(gfKey, secretParam);
   if (v) return v;
   return process.env[legacyKey] || "";
 }
 
-// NOTE:
-// Prefer cookie-based persistence so serverless instances don't lose login state.
-// Fallback: in-memory only when GF_SESSION_PASSWORD is missing.
-let savedTokens = null; // fallback only
+let savedTokens = null;
 let warnedMissingSessionPassword = false;
-let savedUser = null; // fallback only
+let savedUser = null;
 
 const app = express();
-// Ensure req.protocol respects x-forwarded-proto (Firebase/Vercel/Cloud Run)
 app.set("trust proxy", 1);
 const CORS_ORIGIN =
   readLegacyAwareSecret("GF_CORS_ORIGIN", "CORS_ORIGIN", CORS_ORIGIN_SECRET) || "*";
@@ -71,7 +56,6 @@ app.use(
   cors({
     credentials: true,
     origin(origin, cb) {
-      // No Origin header (curl/same-origin navigation)
       if (!origin) return cb(null, true);
       if (allowedOrigins === "*") return cb(null, true);
       return cb(null, allowedOrigins.includes(origin));
@@ -83,9 +67,8 @@ app.use(express.json());
 app.use(requestLogger);
 
 const PORT = 3000;
-const FORM_NAME_TAG = "[gformgen:sangaku]"; // Drive検索で「このアプリが作ったフォーム」を判別するタグ
-const FORM_CLOSED_TAG = "[gformgen:closed]"; // アプリ上の「〆切」判定用タグ（Forms APIで受付停止ができないため）
-// NOTE: タイトルにタグを出さないため、今後は Drive の appProperties をメインで使う
+const FORM_NAME_TAG = "[gformgen:sangaku]";
+const FORM_CLOSED_TAG = "[gformgen:closed]";
 const APP_PROP_APP_KEY = "gformgen_app";
 const APP_PROP_STATUS_KEY = "gformgen_status";
 const APP_PROP_APP_VALUE = "sangaku";
@@ -115,8 +98,6 @@ const APP_PROP_TYPE_FORM_SNAPSHOT = "form_snapshot";
 const APP_PROP_FORM_ID_KEY = "gformgen_form_id";
 const FORM_SNAPSHOT_SCHEMA_VERSION = 1;
 
-// User settings stored on Drive as a small metadata-only file (appProperties).
-// This works with the existing minimal scope: `drive.file` (only app-created files are accessible).
 const APP_PROP_TYPE_KEY = "gformgen_type";
 const APP_PROP_TYPE_USER_SETTINGS = "user_settings";
 const APP_PROP_TYPE_TOOL_FOLDER = "tool_folder";
@@ -151,7 +132,6 @@ const THEME_SCOPE_SIDEBAR = "sidebar";
 function normalizeHexColor(input) {
   const s = String(input || "").trim();
   if (!s) return "";
-  // Support "#abc" and "#aabbcc"
   const m3 = s.match(/^#([0-9a-fA-F]{3})$/);
   if (m3) {
     const [r, g, b] = m3[1].split("");
@@ -280,9 +260,7 @@ async function markDriveFileAsTrashedSafe({ drive, fileId }) {
       requestBody: { trashed: true },
       fields: "id",
     });
-  } catch {
-    // Best-effort cleanup only.
-  }
+  } catch {}
 }
 
 async function ensureUnifiedUserSettingsFile({
@@ -503,11 +481,6 @@ async function upsertDefaultScheduleSettings({
   };
 }
 
-// (Template/GAS copy mode was removed; keep form creation simple and predictable.)
-
-/* =========================
-   Google OAuth 設定
-========================= */
 const FALLBACK_OAUTH_REDIRECT_URI =
   readLegacyAwareSecret(
     "GF_OAUTH_REDIRECT_URI",
@@ -518,7 +491,6 @@ const FALLBACK_OAUTH_REDIRECT_URI =
 
 function getAuthCallbackPathFromRequest(req) {
   const u = String(req?.originalUrl || req?.url || "");
-  // If auth is routed under /api (Vercel rewrite), callback must match that path too.
   return u.startsWith("/api/") ? "/api/auth/google/callback" : "/auth/google/callback";
 }
 
@@ -547,7 +519,6 @@ function makeOAuthClient(redirectUri) {
   );
 }
 
-// Per-request OAuth client (cookie-based; avoids cross-user races)
 function makeAuthedOAuthClientOrNull(req) {
   const tokens = getTokens(req);
   if (!tokens?.access_token && !tokens?.refresh_token) return null;
@@ -603,7 +574,6 @@ function encryptTokens(tokens, secret) {
   const plaintext = Buffer.from(JSON.stringify(tokens), "utf8");
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const tag = cipher.getAuthTag();
-  // v1.<iv>.<tag>.<ciphertext>
   return `v1.${base64UrlEncode(iv)}.${base64UrlEncode(tag)}.${base64UrlEncode(ciphertext)}`;
 }
 
@@ -830,7 +800,6 @@ function setAuthCookie(req, res, tokens) {
     "HttpOnly",
     "SameSite=Lax",
     secure ? "Secure" : "",
-    // keep for ~30 days (refresh_token is long-lived; access_token is short)
     `Max-Age=${60 * 60 * 24 * 30}`,
   ]
     .filter(Boolean)
@@ -859,7 +828,6 @@ function clearAuthCookie(req, res) {
 
 function getTokens(req) {
   const secret = getSessionSecret();
-  // Prefer cookie (works across serverless instances). If secret is missing, fallback to in-memory.
   if (secret) {
     try {
       const cookies = parseCookies(req);
@@ -879,11 +847,9 @@ function getTokens(req) {
 }
 
 async function setTokens(req, res, tokens) {
-  // Best-effort cookie persistence (prevents "login works only after refresh" behind LB)
   try {
     const ok = setAuthCookie(req, res, tokens);
     if (!ok) {
-      // fallback to in-memory only if cookie secret missing
       savedTokens = tokens;
     }
   } catch {
@@ -906,9 +872,6 @@ async function clearTokens(req, res) {
   }
 }
 
-/* =========================
-   OAuth 開始
-========================= */
 function handleAuthGoogle(req, res) {
   const redirectUri =
     readLegacyAwareSecret(
@@ -941,9 +904,6 @@ function handleAuthGoogle(req, res) {
 app.get("/auth/google", handleAuthGoogle);
 app.get("/api/auth/google", handleAuthGoogle);
 
-/* =========================
-   OAuth コールバック
-========================= */
 async function handleAuthCallback(req, res) {
   try {
     const redirectUri =
@@ -957,9 +917,7 @@ async function handleAuthCallback(req, res) {
     const { tokens } = await oauthForAuth.getToken(req.query.code);
     await setTokens(req, res, tokens);
 
-    // Fetch user profile (best-effort) and persist to cookie for later owner checks.
     try {
-      // Prefer id_token (available when openid scope is granted).
       const fromIdToken = userFromIdToken(tokens);
       if (fromIdToken?.sub) {
         savedUser = fromIdToken; // fallback only
@@ -998,12 +956,9 @@ async function handleAuthCallback(req, res) {
       }
     };
 
-    // Treat GF_FRONTEND_ORIGIN as "frontend base URL" (can include a path like "/gformgen/").
     const configuredUrl = parseAbsoluteUrl(configuredFrontendOrigin);
     const returnToUrl = parseAbsoluteUrl(safeReturnTo);
 
-    // Prefer returnTo when it is same-origin with configured frontend (or when no configured frontend).
-    // This supports hosting the SPA under a sub-path.
     let redirectUrl = null;
     if (returnToUrl && configuredUrl) {
       if (returnToUrl.origin === configuredUrl.origin) redirectUrl = returnToUrl;
@@ -1014,7 +969,6 @@ async function handleAuthCallback(req, res) {
       redirectUrl = configuredUrl;
     }
 
-    // Final fallback: redirect to the current request host (better than "/")
     if (!redirectUrl) {
       const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "https")
         .split(",")[0]
@@ -1023,7 +977,6 @@ async function handleAuthCallback(req, res) {
       redirectUrl = host ? new URL(`${proto}://${host}`) : new URL("https://example.invalid");
     }
 
-    // Strip query/hash and append login=success.
     redirectUrl.search = "";
     redirectUrl.hash = "";
 
@@ -1043,16 +996,12 @@ async function handleAuthCallback(req, res) {
 app.get("/auth/google/callback", handleAuthCallback);
 app.get("/api/auth/google/callback", handleAuthCallback);
 
-/* =========================
-   ログイン状態確認（サーバ基準）
-========================= */
 async function handleAuthMe(req, res) {
   const tokens = getTokens(req);
   const loggedIn = Boolean(tokens?.access_token) || Boolean(tokens?.refresh_token);
   const user = await getAuthUserOrNull(req, res);
   return res.json({
     loggedIn,
-    // for debugging/UX only (do not expose token itself)
     hasRefreshToken: Boolean(tokens?.refresh_token),
     hasAccessToken: Boolean(tokens?.access_token),
     expiryDate: tokens?.expiry_date ?? null,
@@ -1069,9 +1018,6 @@ async function handleAuthMe(req, res) {
 app.get("/auth/me", handleAuthMe);
 app.get("/api/auth/me", handleAuthMe);
 
-/* =========================
-   User settings (per logged-in user, stored in Drive appProperties)
-========================= */
 app.get("/api/user-settings/default-schedule", async (req, res) => {
   try {
     const savedTokens = getTokens(req);
@@ -1280,7 +1226,6 @@ app.post("/api/user-settings/form-defaults", async (req, res) => {
   }
 });
 
-/* 全設定を1回で保存（高速化） */
 app.post("/api/user-settings/all", async (req, res) => {
   try {
     const savedTokens = getTokens(req);
@@ -1371,9 +1316,6 @@ app.post("/api/user-settings/all", async (req, res) => {
   }
 });
 
-/* =========================
-   日付日本語整形
-========================= */
 const formatDateJP = (isoString, withTime = false) => {
   if (!isoString) return "";
   const d = new Date(isoString);
@@ -1453,9 +1395,6 @@ const formatDateTimeRangeJP = (startIso, endIso) => {
   return `${formatDateJP(start, true)}〜${formatDateJP(end, true)}`;
 };
 
-/* =========================
-   Forms: 回答/設問ユーティリティ
-========================= */
 async function listAllFormResponses(forms, formId) {
   const responses = [];
   let nextPageToken = undefined;
@@ -1730,9 +1669,6 @@ function getAnswerValue(answer) {
 
 function isParticipantNameTitle(title) {
   const t = String(title || "");
-  // 新形式: "氏名（1人目）"（互換で "氏名（1）"/"参加者名（1）" も許容）
-  // 旧形式: "氏名"
-  // NOTE: 要件にある prefix 判定（例: "参加者名（"）にも将来対応しやすいよう緩めにしている
   return (
     t.includes("参加者名（") ||
     t.includes("氏名（") ||
@@ -1748,7 +1684,6 @@ function isParticipantRoleTitle(title) {
 
 function parseIndexedFieldNumber(title) {
   const t = String(title || "");
-  // 全角括弧: （1人目） / （1）, 半角: (1人目) / (1)
   const m0 = t.match(/（\s*(\d+)\s*人目\s*）/);
   if (m0?.[1]) return Number(m0[1]);
   const m1 = t.match(/（\s*(\d+)\s*）/);
@@ -1776,8 +1711,6 @@ function extractGoogleApiError(err) {
 }
 
 function parseAcceptingResponsesFromTitle(title) {
-  // NOTE: Google Forms APIでは「回答受付停止」を直接更新できないため、
-  // アプリ側ではタイトルにタグを付けて〆切状態を表現する。
   const t = String(title || "");
   if (t.includes(FORM_CLOSED_TAG)) return false;
   if (t.includes(FORM_NAME_TAG)) return true;
@@ -1842,7 +1775,6 @@ async function migrateFileToAppProperties({ forms, drive, file, authUser }) {
   const cleanedName = stripTagsFromTitle(currentName) || currentName;
   const currentProps = file?.appProperties || {};
 
-  // 旧タグから open/closed を推測（closed なら status=closed）
   const acceptingFromTitle = parseAcceptingResponsesFromTitle(currentName);
   const inferredStatus =
     acceptingFromTitle === false ? APP_PROP_STATUS_CLOSED : undefined;
@@ -1919,9 +1851,6 @@ async function migrateFileToAppProperties({ forms, drive, file, authUser }) {
   };
 }
 
-/* =========================
-   フォーム作成 API
-========================= */
 app.post("/api/forms/create", async (req, res) => {
   try {
     const savedTokens = getTokens(req);
@@ -1954,15 +1883,12 @@ app.post("/api/forms/create", async (req, res) => {
       : 1;
     const safePrice = parseIntInRange(price, { min: 0, max: 99999999 }) ?? 0;
 
-    // ★ Drive / Forms に表示される最終タイトル
     const baseTitle = title ? `${title} 出欠通知書` : "出欠通知書";
-    // NOTE: タグはタイトルに出さず、Drive appProperties へ移行
     const formTitle = baseTitle;
 
     console.log("受け取ったフォームデータ:", req.body);
     void logEvent({
       type: "forms_create_requested",
-      // Avoid PII-heavy payloads; keep only high-level fields.
       formTitle,
       hasDatetime: Boolean(datetime),
       hasEndDatetime: Boolean(endDatetime),
@@ -1981,10 +1907,7 @@ app.post("/api/forms/create", async (req, res) => {
       .filter(Boolean)
       .join("\n");
 
-    /* =========================
-       説明文（通知文）
-    ========================= */
-    const description = `
+        const description = `
 ${formTitle}
 
 平素より当協会の活動にご理解とご協力を賜り、誠にありがとうございます。
@@ -2002,9 +1925,6 @@ ${meetingInfoLines}
     const forms = google.forms({ version: "v1", auth: authClient });
     const drive = google.drive({ version: "v3", auth: authClient });
 
-    /* =========================
-       ① フォーム作成
-    ========================= */
     const created = await forms.forms.create({
       requestBody: { info: { title: formTitle } },
     });
@@ -2015,11 +1935,7 @@ ${meetingInfoLines}
       await moveFileIntoFolderIfNeeded({ drive, fileId: formId, folderId: toolFolderId });
     }
 
-    /* =========================
-       ② batchUpdate（★ここが重要）
-    ========================= */
     const requests = [];
-    // ★ タイトル + 説明文を明示的に更新
     requests.push({
       updateFormInfo: {
         info: {
@@ -2030,7 +1946,6 @@ ${meetingInfoLines}
       },
     });
 
-    // 出欠（先頭に移動）
     requests.push({
       createItem: {
         item: {
@@ -2049,7 +1964,6 @@ ${meetingInfoLines}
       },
     });
 
-    // 事業所名
     requests.push({
       createItem: {
         item: {
@@ -2065,15 +1979,17 @@ ${meetingInfoLines}
       },
     });
 
-    // 役職名（n人目）/ 氏名（n人目）: 氏名の1人目のみ必須、2人目以降は任意
-    // 役職名は全て任意（入力負担を増やさない）
+    const roleTitle = (i) =>
+      safeParticipantNameCount === 1 ? "役職名" : `役職名（${i}人目）`;
+    const nameTitle = (i) =>
+      safeParticipantNameCount === 1 ? "氏名" : `氏名（${i}人目）`;
+
     let cursorIndex = 2;
     for (let i = 1; i <= safeParticipantNameCount; i += 1) {
-      // 役職名（i人目）
       requests.push({
         createItem: {
           item: {
-            title: `役職名（${i}人目）`,
+            title: roleTitle(i),
             questionItem: {
               question: {
                 required: false,
@@ -2086,11 +2002,10 @@ ${meetingInfoLines}
       });
       cursorIndex += 1;
 
-      // 氏名（i人目）
       requests.push({
         createItem: {
           item: {
-            title: `氏名（${i}人目）`,
+            title: nameTitle(i),
             questionItem: {
               question: {
                 required: i === 1,
@@ -2104,7 +2019,6 @@ ${meetingInfoLines}
       cursorIndex += 1;
     }
 
-    // 備考
     requests.push({
       createItem: {
         item: {
@@ -2129,7 +2043,6 @@ ${meetingInfoLines}
       },
     });
 
-    // Ensure Drive metadata/appProperties are set even in fallback create path.
     await drive.files.update({
       fileId: formId,
       requestBody: {
@@ -2149,9 +2062,6 @@ ${meetingInfoLines}
 
     const responderUri = String(created?.data?.responderUri || "").trim();
 
-    /* =========================
-       フロントへ返却
-    ========================= */
     void logEvent({
       type: "forms_create_succeeded",
       formId,
@@ -2173,9 +2083,6 @@ ${meetingInfoLines}
   }
 });
 
-/* =========================
-   フォーム回答取得（RAW）
-========================= */
 app.get("/api/forms/:formId/responses/raw", async (req, res) => {
   const { formId } = req.params;
 
@@ -2229,9 +2136,6 @@ app.get("/api/forms/:formId/responses/raw", async (req, res) => {
   }
 });
 
-/* =========================
-   フォーム回答取得（整形）
-========================= */
 app.get("/api/forms/:formId/responses", async (req, res) => {
   const { formId } = req.params;
 
@@ -2289,7 +2193,6 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
         const value = getAnswerValue(answer);
         if (!title) continue;
 
-        // タイトル部分一致で分類
         if (title.includes("事業所")) {
           row.company = value;
           continue;
@@ -2303,7 +2206,6 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
           continue;
         }
 
-        // 役職名（n） / 役職名
         if (isParticipantRoleTitle(title)) {
           const idx = parseIndexedFieldNumber(title) ?? 1;
           const v = String(value || "").trim();
@@ -2312,7 +2214,6 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
           continue;
         }
 
-        // 氏名（n） / 氏名 / 参加者名（n）
         if (isParticipantNameTitle(title)) {
           const idx = parseIndexedFieldNumber(title) ?? 1;
           const v = String(value || "").trim();
@@ -2351,8 +2252,6 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
       return row;
     });
 
-    // Closed forms can still receive "empty" submissions from the Google Forms UI.
-    // Do not show them as blank/absent rows in normal aggregation.
     let postCloseSubmissionCount = 0;
     const filtered = parsedRows.filter((row) => {
       const isEmpty =
@@ -2368,7 +2267,6 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
       return true;
     });
 
-    // タイムスタンプ降順（最新到着が一番上）
     const rows = filtered.slice().sort((a, b) => {
       const ta = new Date(a?.submittedAt || 0).getTime();
       const tb = new Date(b?.submittedAt || 0).getTime();
@@ -2396,9 +2294,6 @@ app.get("/api/forms/:formId/responses", async (req, res) => {
   }
 });
 
-/* =========================
-   フォーム別サマリー（出席者数/回答者数）
-========================= */
 app.get("/api/forms/:formId/summary", async (req, res) => {
   const { formId } = req.params;
 
@@ -2458,7 +2353,6 @@ app.get("/api/forms/:formId/summary", async (req, res) => {
       }
       responseCount += 1;
 
-      // 出席者数は「出席回答」のみを集計対象とする
       let attendance = "";
       for (const [questionId, answer] of Object.entries(answers)) {
         const title = questionIdToTitle.get(String(questionId)) || "";
@@ -2500,9 +2394,6 @@ app.get("/api/forms/:formId/summary", async (req, res) => {
   }
 });
 
-/* =========================
-   このアプリが作成したフォーム一覧（Drive検索）
-========================= */
 app.get("/api/forms/list", async (req, res) => {
   try {
     const savedTokens = getTokens(req);
@@ -2520,7 +2411,6 @@ app.get("/api/forms/list", async (req, res) => {
     if (!authClient) return res.status(401).json({ error: "Not logged in" });
     const authUser = await getAuthUserOrNull(req, res);
     if (!authUser?.sub) {
-      // Fail-closed: without knowing "who", we can't safely filter by owner.
       return res.status(401).json({ error: "Failed to determine logged-in user" });
     }
     const formsApi = google.forms({ version: "v1", auth: authClient });
@@ -2531,7 +2421,6 @@ app.get("/api/forms/list", async (req, res) => {
       "mimeType = 'application/vnd.google-apps.form'",
     ].join(" and ");
 
-    // ① appProperties で抽出（タイトルにタグを出さない方式）
     const q1 = [
       baseQ,
       `appProperties has { key='${APP_PROP_APP_KEY}' and value='${APP_PROP_APP_VALUE}' }`,
@@ -2546,7 +2435,6 @@ app.get("/api/forms/list", async (req, res) => {
 
     const files1 = result1?.data?.files || [];
 
-    // ② 互換：旧方式（タイトルタグ）も常に拾う（移行のため）
     const q2 = [baseQ, `name contains '${FORM_NAME_TAG}'`].join(" and ");
     const result2 = await drive.files.list({
       q: q2,
@@ -2564,13 +2452,11 @@ app.get("/api/forms/list", async (req, res) => {
     }
     const files = Array.from(byId.values());
 
-    // 一覧取得のタイミングで一括移行（ベストエフォート、5件ずつ）
     const migrateTargets = files.filter((f) => {
       const name = String(f?.name || "");
       const props = f?.appProperties || {};
       const hasApp = String(props?.[APP_PROP_APP_KEY] || "") === APP_PROP_APP_VALUE;
       const hasTag = name.includes(FORM_NAME_TAG) || name.includes(FORM_CLOSED_TAG);
-      // also backfill owner props for owned-by-me forms
       const hasOwner = Boolean(String(props?.[APP_PROP_OWNER_SUB_KEY] || "").trim());
       return !hasApp || hasTag || ((f?.ownedByMe === true) && !hasOwner);
     });
@@ -2592,12 +2478,10 @@ app.get("/api/forms/list", async (req, res) => {
 
     const forms = files
       .filter((f) => {
-        // If we know current user, only show forms owned by that user.
         if (!authUser?.sub) return true;
         const props = f?.appProperties || {};
         const ownerSub = String(props?.[APP_PROP_OWNER_SUB_KEY] || "").trim();
         if (ownerSub) return ownerSub === String(authUser.sub).trim();
-        // Legacy: allow old forms owned by current account (and we backfill owner props above)
         return f?.ownedByMe === true;
       })
       .map((f) => {
@@ -2625,9 +2509,6 @@ app.get("/api/forms/list", async (req, res) => {
   }
 });
 
-/* =========================
-   フォーム情報取得（responderUriなど）
-========================= */
 app.get("/api/forms/:formId/info", async (req, res) => {
   const { formId } = req.params;
 
@@ -2662,7 +2543,6 @@ app.get("/api/forms/:formId/info", async (req, res) => {
     const driveName = driveFile?.data?.name || "";
     const appProps = driveFile?.data?.appProperties || {};
 
-    // 互換：旧タグが残っている場合、選択したタイミングで自動移行（タイトルからタグを消す）
     const currentTitle = String(info?.title || "");
     const nextTitle = stripTagsFromTitle(currentTitle);
     const currentName = String(driveName || "");
@@ -2678,7 +2558,6 @@ app.get("/api/forms/:formId/info", async (req, res) => {
       String(appProps?.[APP_PROP_APP_KEY] || "") !== APP_PROP_APP_VALUE
     ) {
       try {
-        // Forms タイトルをクリーンに（ユーザーにタグを見せない）
         if (nextTitle && nextTitle !== currentTitle) {
           await forms.forms.batchUpdate({
             formId,
@@ -2695,7 +2574,6 @@ app.get("/api/forms/:formId/info", async (req, res) => {
           });
         }
 
-        // Drive 側もクリーンにし、appProperties を付与
         const nextProps = mergeAppProperties(appProps, {
           [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
           ...(inferredStatus ? { [APP_PROP_STATUS_KEY]: inferredStatus } : {}),
@@ -2708,7 +2586,6 @@ app.get("/api/forms/:formId/info", async (req, res) => {
           },
         });
       } catch (e) {
-        // 移行はベストエフォート（失敗しても info 自体は返す）
         console.warn("migration failed:", e?.message || String(e));
       }
     }
@@ -2736,9 +2613,6 @@ app.get("/api/forms/:formId/info", async (req, res) => {
   }
 });
 
-/* =========================
-   フォーム〆切（回答受付停止）
-========================= */
 app.post("/api/forms/:formId/close", async (req, res) => {
   const { formId } = req.params;
   try {
@@ -2761,17 +2635,13 @@ app.post("/api/forms/:formId/close", async (req, res) => {
     const access = await enforceOwnerAccess({ req, res, drive, formId });
     if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
 
-    // NOTE: Forms APIでは回答受付停止の切り替えが提供されていないため、
-    // Drive appProperties で「〆切」状態を表現する（タイトルにタグは出さない）
     const driveFile = await drive.files.get({
       fileId: formId,
       fields: "id,name,appProperties",
     });
     const appProps = driveFile?.data?.appProperties || {};
     const byProps = parseAcceptingResponsesFromAppProperties(appProps);
-    // Always proceed best-effort to keep title/items consistent (even when already closed).
 
-    // 互換：旧タグが残っている場合はこのタイミングで除去（タイトル末尾文言は付けない）
     const current = await forms.forms.get({ formId });
     const currentTitle = String(current?.data?.info?.title || "");
     const baseTitle = stripTagsFromTitle(currentTitle) || currentTitle;
@@ -2812,7 +2682,6 @@ app.post("/api/forms/:formId/close", async (req, res) => {
 
     /** @type {any[]} */
     const requests = [];
-    // Title + Description: replace with a concise closed notice only.
     requests.push({
       updateFormInfo: {
         info: {
@@ -2823,7 +2692,6 @@ app.post("/api/forms/:formId/close", async (req, res) => {
       },
     });
 
-    // Delete all existing items (questions etc.) to prevent further responses.
     for (let i = items.length - 1; i >= 0; i -= 1) {
       requests.push({
         deleteItem: {
@@ -2832,7 +2700,6 @@ app.post("/api/forms/:formId/close", async (req, res) => {
       });
     }
 
-    // Add a non-question text item as a clean "closed" message.
     requests.push({
       createItem: {
         item: {
@@ -2878,9 +2745,6 @@ app.post("/api/forms/:formId/close", async (req, res) => {
   }
 });
 
-/* =========================
-   フォーム削除（Driveのゴミ箱へ移動）
-========================= */
 app.post("/api/forms/:formId/trash", async (req, res) => {
   const { formId } = req.params;
   try {
@@ -2922,10 +2786,6 @@ app.post("/api/forms/:formId/trash", async (req, res) => {
   }
 });
 
-/* =========================
-   デバッグ用：最近のログ取得（任意）
-   ENABLE_LOG_API=true の時のみ有効化
-========================= */
 if (process.env.ENABLE_LOG_API === "true") {
   app.get("/api/logs/recent", async (req, res) => {
     const limit = Number(req.query.limit ?? 200);
@@ -2934,9 +2794,6 @@ if (process.env.ENABLE_LOG_API === "true") {
   });
 }
 
-/* =========================
-   ログアウト
-========================= */
 app.post("/auth/logout", (req, res) => {
   void clearTokens(req, res);
   void logEvent({ type: "logout" });
@@ -2949,9 +2806,6 @@ app.post("/api/auth/logout", (req, res) => {
   res.json({ success: true });
 });
 
-/* =========================
-   エラーハンドラ（実行時500の原因をログに残す）
-========================= */
 app.use((err, req, res, _next) => {
   const message = err?.message || String(err);
   console.error("Unhandled error:", err);
@@ -2961,14 +2815,12 @@ app.use((err, req, res, _next) => {
     message,
   });
 
-  // 本番では内部情報を出しすぎない
   const body = IS_FIREBASE
     ? { error: "Internal Server Error" }
     : { error: "Internal Server Error", message, stack: err?.stack || null };
   res.status(500).json(body);
 });
 
-// Firebase Hosting から `/api/**` を rewrite して受ける想定（Hosting + Functions 同居）
 export const api = onRequest(
   {
     timeoutSeconds: 300,
@@ -2984,9 +2836,6 @@ export const api = onRequest(
   app
 );
 
-/* =========================
-   サーバー起動
-========================= */
 if (!IS_FIREBASE) {
   app.listen(PORT, () => {
     console.log(`Backend running on port ${PORT}`);

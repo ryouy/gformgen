@@ -27,7 +27,6 @@ export function downloadResponsesCsv({ rows, selectedFormId, title }) {
     ),
   ];
 
-  // Excel-friendly: include UTF-8 BOM.
   const csv = `\uFEFF${lines.join("\n")}`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);

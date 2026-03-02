@@ -27,7 +27,6 @@ export function isAttending(p) {
 
 export function computeAttendanceSummary(participants) {
   const attending = (participants || []).filter(isAttending);
-  // 1人=1レコード運用のため、合計出席人数は行数で数える
   const totalAttendance = attending.length;
   const attendanceCompanies = new Set(
     attending.map((p) => (p?.company || "").trim()).filter(Boolean)

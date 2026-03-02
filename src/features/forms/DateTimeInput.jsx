@@ -1,4 +1,3 @@
-// src/SangakuComponents/DateTimeInput.jsx
 import { DatePicker } from "antd";
 import locale from "antd/es/date-picker/locale/ja_JP";
 import "antd/dist/reset.css";
@@ -13,7 +12,6 @@ export default function DateTimeInput({ value, onChange }) {
       showTime={{
         minuteStep: 15,
 
-        // ★ 範囲外の時間を「非表示」にする
         hideDisabledOptions: true,
 
         disabledTime: () => ({

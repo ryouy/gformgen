@@ -1,4 +1,3 @@
-// src/SangakuComponents/QrSection.jsx
 import { motion } from "framer-motion";
 import { QRCodeCanvas } from "qrcode.react";
 

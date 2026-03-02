@@ -11,7 +11,6 @@ import {
 
 export default function StatsToolbar({
   storageKey,
-  // state
   forms,
   selectedFormId,
   visibleForms,
@@ -19,7 +18,6 @@ export default function StatsToolbar({
   formUrl,
   editUrl,
   remarkRowsLength,
-  // actions
   setSelectedFormId,
   rememberRecentFormId,
   setRows,
@@ -34,9 +32,7 @@ export default function StatsToolbar({
   fetchSummary,
   fetchFormInfo,
   fetchRows,
-  // helpers
   normalizeTitle,
-  // exports/admin
   handleDownloadCsv,
   handleDownloadPdf,
   handleCloseForm,
