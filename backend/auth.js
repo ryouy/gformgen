@@ -1,44 +1,139 @@
+import cookie from "cookie";
 import { google } from "googleapis";
-import crypto from "node:crypto";
 import {
-  IS_FIREBASE,
   readLegacyAwareSecret,
   GOOGLE_CLIENT_ID_SECRET,
   GOOGLE_CLIENT_SECRET_SECRET,
   OAUTH_REDIRECT_URI_SECRET,
-  SESSION_PASSWORD_SECRET,
   FRONTEND_ORIGIN_SECRET,
 } from "./config.js";
 import { APP_PROP_APP_KEY, APP_PROP_APP_VALUE, APP_PROP_OWNER_SUB_KEY } from "./constants.js";
 import { mergeAppProperties, buildOwnerAppPropertiesPatch } from "./utils.js";
+import { createSession, deleteSession, getSession, updateSession } from "./sessionStore.js";
 
-const FALLBACK_OAUTH_REDIRECT_URI =
-  readLegacyAwareSecret(
+const SESSION_COOKIE_NAME = "__session";
+const LEGACY_SESSION_COOKIE_NAME = "gformgen_session";
+const LEGACY_TOKENS_COOKIE_NAME = "gformgen_tokens";
+const LEGACY_USER_COOKIE_NAME = "gformgen_user";
+const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const OAUTH_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/forms.body",
+  "https://www.googleapis.com/auth/forms.responses.readonly",
+  "https://www.googleapis.com/auth/drive.file",
+];
+
+function sessionPrefix(sessionId) {
+  return String(sessionId || "").slice(0, 8);
+}
+
+function getOAuthRedirectUri() {
+  const redirectUri = readLegacyAwareSecret(
     "GF_OAUTH_REDIRECT_URI",
     "OAUTH_REDIRECT_URI",
     OAUTH_REDIRECT_URI_SECRET
-  ) ||
-  "https://example.invalid/oauth2/callback";
-
-let savedTokens = null;
-let warnedMissingSessionPassword = false;
-let savedUser = null;
-
-function getAuthCallbackPathFromRequest(req) {
-  const u = String(req?.originalUrl || req?.url || "");
-  return u.startsWith("/api/") ? "/api/auth/google/callback" : "/auth/google/callback";
+  );
+  const value = String(redirectUri || "").trim();
+  if (!value) {
+    throw new Error(
+      "GF_OAUTH_REDIRECT_URI must be set. Example: https://gfca-aizu.web.app/api/auth/google/callback"
+    );
+  }
+  return value;
 }
 
-function buildRedirectUriFromRequest(req) {
+function parseCookies(req) {
+  return cookie.parse(String(req?.headers?.cookie || ""));
+}
+
+function getSessionCookieValue(req) {
+  return String(parseCookies(req)?.[SESSION_COOKIE_NAME] || "").trim();
+}
+
+function cookieAttrs(req, { clear = false } = {}) {
   const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
     .split(",")[0]
     .trim();
-  const host = String(req?.headers?.["x-forwarded-host"] || req?.get?.("host") || "").trim();
-  if (!host) return FALLBACK_OAUTH_REDIRECT_URI;
-  return `${proto}://${host}${getAuthCallbackPathFromRequest(req)}`;
+  const secure = proto === "https";
+  const sameSite = secure ? "SameSite=None" : "SameSite=Lax";
+  return [
+    "Path=/",
+    "HttpOnly",
+    sameSite,
+    secure ? "Secure" : "",
+    `Max-Age=${clear ? 0 : COOKIE_MAX_AGE_SECONDS}`,
+  ]
+    .filter(Boolean)
+    .join("; ");
 }
 
-export function makeOAuthClient(redirectUri) {
+function setAuthNoStore(res) {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+}
+
+function appendCookie(res, cookieString) {
+  res.append("Set-Cookie", cookieString);
+}
+
+function setSessionCookie(req, res, sessionId) {
+  console.log("[auth] setSessionCookie", {
+    sessionId: sessionPrefix(sessionId),
+    attrs: cookieAttrs(req),
+  });
+  appendCookie(
+    res,
+    [`${SESSION_COOKIE_NAME}=${encodeURIComponent(sessionId)}`, cookieAttrs(req)].join("; ")
+  );
+}
+
+function clearCookie(req, res, name) {
+  appendCookie(res, [`${name}=`, cookieAttrs(req, { clear: true })].join("; "));
+}
+
+function clearLegacyCookies(req, res) {
+  clearCookie(req, res, LEGACY_SESSION_COOKIE_NAME);
+  clearCookie(req, res, LEGACY_TOKENS_COOKIE_NAME);
+  clearCookie(req, res, LEGACY_USER_COOKIE_NAME);
+}
+
+function setSessionCache(req, session) {
+  req._gformgenSession = session || null;
+}
+
+async function getSessionFromRequest(req) {
+  if (req._gformgenSession !== undefined) return req._gformgenSession;
+
+  const sessionId = getSessionCookieValue(req);
+  if (!sessionId) {
+    console.log("[auth] getSessionFromRequest no-cookie");
+    setSessionCache(req, null);
+    return null;
+  }
+
+  console.log("[auth] getSessionFromRequest cookie", {
+    sessionId: sessionPrefix(sessionId),
+  });
+  const session = await getSession(sessionId);
+  console.log("[auth] getSessionFromRequest result", {
+    sessionId: sessionPrefix(sessionId),
+    found: Boolean(session),
+    hasUser: Boolean(session?.user?.sub),
+    hasRefreshToken: Boolean(session?.tokens?.refresh_token),
+    hasAccessToken: Boolean(session?.tokens?.access_token),
+  });
+  setSessionCache(req, session);
+  return session;
+}
+
+function hasUsableTokens(tokens) {
+  return Boolean(tokens?.refresh_token || tokens?.access_token);
+}
+
+export function makeOAuthClient(redirectUri = getOAuthRedirectUri()) {
   return new google.auth.OAuth2(
     readLegacyAwareSecret(
       "GF_GOOGLE_CLIENT_ID",
@@ -50,214 +145,139 @@ export function makeOAuthClient(redirectUri) {
       "GOOGLE_CLIENT_SECRET",
       GOOGLE_CLIENT_SECRET_SECRET
     ),
-    redirectUri || FALLBACK_OAUTH_REDIRECT_URI
+    redirectUri
   );
-}
-
-function base64UrlEncode(buf) {
-  return Buffer.from(buf)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-function base64UrlDecode(s) {
-  const b64 = String(s).replace(/-/g, "+").replace(/_/g, "/");
-  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
-  return Buffer.from(b64 + pad, "base64");
-}
-
-function getSessionSecret() {
-  const v = readLegacyAwareSecret(
-    "GF_SESSION_PASSWORD",
-    "SESSION_PASSWORD",
-    SESSION_PASSWORD_SECRET
-  );
-  return String(v || "").trim() || "";
-}
-
-function encryptTokens(tokens, secret) {
-  const key = crypto.createHash("sha256").update(secret).digest();
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const plaintext = Buffer.from(JSON.stringify(tokens), "utf8");
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `v1.${base64UrlEncode(iv)}.${base64UrlEncode(tag)}.${base64UrlEncode(ciphertext)}`;
-}
-
-function decryptTokens(payload, secret) {
-  const p = String(payload || "");
-  if (!p.startsWith("v1.")) return null;
-  const parts = p.split(".");
-  if (parts.length !== 4) return null;
-  const [, ivB64u, tagB64u, ctB64u] = parts;
-  const key = crypto.createHash("sha256").update(secret).digest();
-  const iv = base64UrlDecode(ivB64u);
-  const tag = base64UrlDecode(tagB64u);
-  const ciphertext = base64UrlDecode(ctB64u);
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(tag);
-  const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-  const obj = JSON.parse(plaintext.toString("utf8"));
-  return obj && typeof obj === "object" ? obj : null;
-}
-
-export function parseCookies(req) {
-  const raw = String(req?.headers?.cookie || "");
-  /** @type {Record<string, string>} */
-  const out = {};
-  for (const part of raw.split(";")) {
-    const p = part.trim();
-    if (!p) continue;
-    const i = p.indexOf("=");
-    if (i <= 0) continue;
-    const k = p.slice(0, i).trim();
-    const v = p.slice(i + 1).trim();
-    if (!k) continue;
-    out[k] = decodeURIComponent(v);
-  }
-  return out;
-}
-
-export function setUserCookie(req, res, user) {
-  const secret = getSessionSecret();
-  if (!secret) return false;
-  const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
-    .split(",")[0]
-    .trim();
-  const secure = proto === "https";
-  const value = encryptTokens(user, secret);
-  const attrs = [
-    `gformgen_user=${encodeURIComponent(value)}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    secure ? "Secure" : "",
-    `Max-Age=${60 * 60 * 24 * 30}`,
-  ]
-    .filter(Boolean)
-    .join("; ");
-  res.setHeader("Set-Cookie", attrs);
-  return true;
-}
-
-export function clearUserCookie(req, res) {
-  const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
-    .split(",")[0]
-    .trim();
-  const secure = proto === "https";
-  const attrs = [
-    "gformgen_user=",
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    secure ? "Secure" : "",
-    "Max-Age=0",
-  ]
-    .filter(Boolean)
-    .join("; ");
-  res.setHeader("Set-Cookie", attrs);
-}
-
-export function getSavedUser(req) {
-  const secret = getSessionSecret();
-  if (secret) {
-    try {
-      const cookies = parseCookies(req);
-      const enc = cookies?.gformgen_user;
-      if (enc) {
-        const user = decryptTokens(enc, secret);
-        if (user && typeof user === "object") {
-          return user;
-        }
-      }
-    } catch {
-      // ignore and fallback
-    }
-    return null;
-  }
-  return savedUser;
 }
 
 export async function fetchGoogleUserInfo(authClient) {
   const oauth2 = google.oauth2({ version: "v2", auth: authClient });
-  const res = await oauth2.userinfo.get();
-  const data = res?.data || {};
-  const sub = String(data?.id || "").trim();
-  const email = String(data?.email || "").trim();
-  const name = String(data?.name || "").trim();
+  const response = await oauth2.userinfo.get();
+  const data = response?.data || {};
   return {
-    sub: sub || "",
-    email: email || "",
-    name: name || "",
+    sub: String(data?.id || "").trim(),
+    email: String(data?.email || "").trim(),
+    name: String(data?.name || "").trim(),
   };
 }
 
+function base64UrlDecode(value) {
+  const b64 = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64.length % 4 === 0 ? "" : "=".repeat(4 - (b64.length % 4));
+  return Buffer.from(b64 + pad, "base64");
+}
+
 function tryDecodeJwtPayload(jwt) {
-  const s = String(jwt || "").trim();
-  const parts = s.split(".");
+  const parts = String(jwt || "").split(".");
   if (parts.length < 2) return null;
-  const payload = parts[1];
   try {
-    const buf = base64UrlDecode(payload);
-    const obj = JSON.parse(buf.toString("utf8"));
-    return obj && typeof obj === "object" ? obj : null;
+    return JSON.parse(base64UrlDecode(parts[1]).toString("utf8"));
   } catch {
     return null;
   }
 }
 
 export function userFromIdToken(tokens) {
-  const idToken = tokens?.id_token;
-  if (!idToken) return null;
-  const payload = tryDecodeJwtPayload(idToken);
-  if (!payload) return null;
+  const payload = tryDecodeJwtPayload(tokens?.id_token);
+  if (!payload || typeof payload !== "object") return null;
   const sub = String(payload?.sub || payload?.user_id || "").trim();
-  const email = String(payload?.email || "").trim();
-  const name = String(payload?.name || payload?.given_name || "").trim();
   if (!sub) return null;
-  return { sub, email, name };
+  return {
+    sub,
+    email: String(payload?.email || "").trim(),
+    name: String(payload?.name || payload?.given_name || "").trim(),
+  };
 }
 
-export async function getAuthUserOrNull(req, res) {
-  const cached = getSavedUser(req);
-  if (cached?.sub) return cached;
+async function persistUserOnSession(req, user) {
+  const session = await getSessionFromRequest(req);
+  if (!session?.sessionId || !user?.sub) return user || null;
+  const updated = await updateSession(session.sessionId, { user });
+  setSessionCache(req, updated);
+  return updated?.user || user;
+}
 
-  const tokens = getTokens(req);
+async function persistTokensOnSession(req, tokens) {
+  const session = await getSessionFromRequest(req);
+  if (!session?.sessionId || !tokens) return;
+  const updated = await updateSession(session.sessionId, { tokens });
+  setSessionCache(req, updated);
+}
+
+function buildFrontendRedirectUrl(req, state) {
+  const returnTo = state ? decodeURIComponent(String(state)) : null;
+  const safeReturnTo = returnTo && /^https?:\/\//.test(returnTo) ? returnTo : null;
+  const configuredFrontendOrigin = readLegacyAwareSecret(
+    "GF_FRONTEND_ORIGIN",
+    "FRONTEND_ORIGIN",
+    FRONTEND_ORIGIN_SECRET
+  );
+
+  const parseAbsoluteUrl = (maybeUrl) => {
+    if (!maybeUrl) return null;
+    try {
+      return new URL(String(maybeUrl));
+    } catch {
+      return null;
+    }
+  };
+
+  const configuredUrl = parseAbsoluteUrl(configuredFrontendOrigin);
+  const returnToUrl = parseAbsoluteUrl(safeReturnTo);
+
+  let redirectUrl = null;
+  if (returnToUrl && configuredUrl) {
+    redirectUrl = returnToUrl.origin === configuredUrl.origin ? returnToUrl : configuredUrl;
+  } else if (returnToUrl) {
+    redirectUrl = returnToUrl;
+  } else if (configuredUrl) {
+    redirectUrl = configuredUrl;
+  }
+
+  if (!redirectUrl) {
+    const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "https")
+      .split(",")[0]
+      .trim();
+    const host = String(req?.headers?.["x-forwarded-host"] || req?.get?.("host") || "").trim();
+    redirectUrl = host ? new URL(`${proto}://${host}`) : new URL("https://example.invalid");
+  }
+
+  redirectUrl.search = "";
+  redirectUrl.hash = "";
+  const basePath = String(redirectUrl.pathname || "/").replace(/\/?$/, "/");
+  return `${redirectUrl.origin}${basePath}?login=success`;
+}
+
+export async function getTokens(req) {
+  const session = await getSessionFromRequest(req);
+  return hasUsableTokens(session?.tokens) ? session.tokens : null;
+}
+
+export async function getAuthUserOrNull(req) {
+  const session = await getSessionFromRequest(req);
+  if (session?.user?.sub) return session.user;
+
+  const tokens = session?.tokens || null;
   const fromIdToken = userFromIdToken(tokens);
   if (fromIdToken?.sub) {
-    if (!getSessionSecret()) savedUser = fromIdToken;
-    try {
-      setUserCookie(req, res, fromIdToken);
-    } catch {
-      // ignore
-    }
+    await persistUserOnSession(req, fromIdToken);
     return fromIdToken;
   }
 
-  const authClient = makeAuthedOAuthClientOrNull(req);
+  const authClient = await makeAuthedOAuthClientOrNull(req);
   if (!authClient) return null;
+
   try {
     const user = await fetchGoogleUserInfo(authClient);
-    if (user?.sub) {
-      if (!getSessionSecret()) savedUser = user;
-      try {
-        setUserCookie(req, res, user);
-      } catch {
-        // ignore
-      }
-      return user;
-    }
+    if (!user?.sub) return null;
+    await persistUserOnSession(req, user);
+    return user;
   } catch {
-    // ignore
+    return null;
   }
-  return cached || null;
 }
 
-export async function enforceOwnerAccess({ req, res, drive, formId, requireApp = true }) {
-  const authUser = await getAuthUserOrNull(req, res);
+export async function enforceOwnerAccess({ req, drive, formId, requireApp = true }) {
+  const authUser = await getAuthUserOrNull(req);
   if (!authUser?.sub) {
     return { ok: false, status: 401, error: "Not logged in" };
   }
@@ -300,218 +320,70 @@ export async function enforceOwnerAccess({ req, res, drive, formId, requireApp =
   return { ok: false, status: 403, error: "Forbidden" };
 }
 
-function setAuthCookie(req, res, tokens) {
-  const secret = getSessionSecret();
-  if (!secret) {
-    if (IS_FIREBASE && !warnedMissingSessionPassword) {
-      warnedMissingSessionPassword = true;
-      console.warn(
-        "[gformgen] GF_SESSION_PASSWORD is not set. Login state may be lost between serverless instances."
-      );
-    }
-    return false;
-  }
-
-  const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
-    .split(",")[0]
-    .trim();
-  const secure = proto === "https";
-  const value = encryptTokens(tokens, secret);
-  const attrs = [
-    `gformgen_tokens=${encodeURIComponent(value)}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    secure ? "Secure" : "",
-    `Max-Age=${60 * 60 * 24 * 30}`,
-  ]
-    .filter(Boolean)
-    .join("; ");
-  res.setHeader("Set-Cookie", attrs);
-  return true;
-}
-
-function clearAuthCookie(req, res) {
-  const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "http")
-    .split(",")[0]
-    .trim();
-  const secure = proto === "https";
-  const attrs = [
-    "gformgen_tokens=",
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    secure ? "Secure" : "",
-    "Max-Age=0",
-  ]
-    .filter(Boolean)
-    .join("; ");
-  res.setHeader("Set-Cookie", attrs);
-}
-
-export function getTokens(req) {
-  const secret = getSessionSecret();
-  if (secret) {
-    try {
-      const cookies = parseCookies(req);
-      const enc = cookies?.gformgen_tokens;
-      if (enc) {
-        const tokens = decryptTokens(enc, secret);
-        if (tokens?.access_token || tokens?.refresh_token) {
-          return tokens;
-        }
-      }
-    } catch {
-      // ignore and fallback
-    }
-    return null;
-  }
-  return savedTokens;
-}
-
-export async function setTokens(req, res, tokens) {
-  try {
-    const ok = setAuthCookie(req, res, tokens);
-    if (!ok) {
-      savedTokens = tokens;
-    }
-  } catch {
-    savedTokens = tokens;
-  }
-}
-
 export async function clearTokens(req, res) {
-  savedTokens = null;
-  savedUser = null;
-  try {
-    clearAuthCookie(req, res);
-  } catch {
-    // ignore
+  const sessionId = getSessionCookieValue(req);
+  if (sessionId) {
+    await deleteSession(sessionId);
   }
-  try {
-    clearUserCookie(req, res);
-  } catch {
-    // ignore
-  }
+  setSessionCache(req, null);
+  clearCookie(req, res, SESSION_COOKIE_NAME);
+  clearLegacyCookies(req, res);
 }
 
-export function makeAuthedOAuthClientOrNull(req) {
-  const tokens = getTokens(req);
-  if (!tokens?.access_token && !tokens?.refresh_token) return null;
-  const client = makeOAuthClient(FALLBACK_OAUTH_REDIRECT_URI);
-  client.setCredentials(tokens);
+export async function makeAuthedOAuthClientOrNull(req) {
+  const session = await getSessionFromRequest(req);
+  if (!hasUsableTokens(session?.tokens)) return null;
+
+  const client = makeOAuthClient();
+  client.setCredentials(session.tokens);
+  client.on("tokens", (nextTokens) => {
+    void persistTokensOnSession(req, nextTokens);
+  });
   return client;
 }
 
 export function handleAuthGoogle(req, res) {
-  const redirectUri =
-    readLegacyAwareSecret(
-      "GF_OAUTH_REDIRECT_URI",
-      "OAUTH_REDIRECT_URI",
-      OAUTH_REDIRECT_URI_SECRET
-    ) ||
-    buildRedirectUriFromRequest(req);
-  const oauthForAuth = makeOAuthClient(redirectUri);
-  const returnToRaw = String(req.query.returnTo || "").trim();
-  const returnTo =
-    returnToRaw && /^https?:\/\//.test(returnToRaw) ? returnToRaw : null;
-
-  const authUrl = oauthForAuth.generateAuthUrl({
-    access_type: "offline",
-    prompt: "consent",
-    scope: [
-      "openid",
-      "email",
-      "profile",
-      "https://www.googleapis.com/auth/forms.body",
-      "https://www.googleapis.com/auth/forms.responses.readonly",
-      "https://www.googleapis.com/auth/drive.file",
-    ],
-    ...(returnTo ? { state: encodeURIComponent(returnTo) } : {}),
-  });
-  res.redirect(authUrl);
+  try {
+    setAuthNoStore(res);
+    const oauthClient = makeOAuthClient();
+    const returnToRaw = String(req.query.returnTo || "").trim();
+    const returnTo = returnToRaw && /^https?:\/\//.test(returnToRaw) ? returnToRaw : null;
+    const authUrl = oauthClient.generateAuthUrl({
+      access_type: "offline",
+      prompt: "consent",
+      scope: OAUTH_SCOPES,
+      ...(returnTo ? { state: encodeURIComponent(returnTo) } : {}),
+    });
+    res.redirect(authUrl);
+  } catch (err) {
+    console.error("[auth] handleAuthGoogle:", err);
+    res.status(500).json({ error: "OAuth configuration error" });
+  }
 }
 
 export async function handleAuthCallback(req, res) {
   const { logEvent } = await import("./logger.js");
   try {
-    const redirectUri =
-      readLegacyAwareSecret(
-        "GF_OAUTH_REDIRECT_URI",
-        "OAUTH_REDIRECT_URI",
-        OAUTH_REDIRECT_URI_SECRET
-      ) ||
-      buildRedirectUriFromRequest(req);
-    const oauthForAuth = makeOAuthClient(redirectUri);
-    const { tokens } = await oauthForAuth.getToken(req.query.code);
-    await setTokens(req, res, tokens);
+    setAuthNoStore(res);
+    const oauthClient = makeOAuthClient();
+    const { tokens } = await oauthClient.getToken(req.query.code);
+    oauthClient.setCredentials(tokens);
 
-    try {
-      const fromIdToken = userFromIdToken(tokens);
-      if (fromIdToken?.sub) {
-        savedUser = fromIdToken;
-        setUserCookie(req, res, fromIdToken);
-      }
-
-      const client = makeOAuthClient(redirectUri);
-      client.setCredentials(tokens);
-      const user = await fetchGoogleUserInfo(client);
-      if (user?.sub) {
-        savedUser = user;
-        setUserCookie(req, res, user);
-      }
-    } catch {
-      // ignore
-    }
-
-    void logEvent({
-      type: "oauth_success",
+    const user = userFromIdToken(tokens) || (await fetchGoogleUserInfo(oauthClient));
+    const session = await createSession({ user, tokens });
+    console.log("[auth] callback session created", {
+      sessionId: sessionPrefix(session?.sessionId),
+      hasUser: Boolean(session?.user?.sub),
+      hasRefreshToken: Boolean(session?.tokens?.refresh_token),
+      hasAccessToken: Boolean(session?.tokens?.access_token),
     });
-    const state = String(req.query.state || "").trim();
-    const returnTo = state ? decodeURIComponent(state) : null;
-    const safeReturnTo = returnTo && /^https?:\/\//.test(returnTo) ? returnTo : null;
-    const configuredFrontendOrigin = readLegacyAwareSecret(
-      "GF_FRONTEND_ORIGIN",
-      "FRONTEND_ORIGIN",
-      FRONTEND_ORIGIN_SECRET
-    );
+    setSessionCache(req, session);
 
-    const parseAbsoluteUrl = (maybeUrl) => {
-      if (!maybeUrl) return null;
-      try {
-        return new URL(String(maybeUrl));
-      } catch {
-        return null;
-      }
-    };
+    setSessionCookie(req, res, session.sessionId);
+    clearLegacyCookies(req, res);
 
-    const configuredUrl = parseAbsoluteUrl(configuredFrontendOrigin);
-    const returnToUrl = parseAbsoluteUrl(safeReturnTo);
-
-    let redirectUrl = null;
-    if (returnToUrl && configuredUrl) {
-      if (returnToUrl.origin === configuredUrl.origin) redirectUrl = returnToUrl;
-      else redirectUrl = configuredUrl;
-    } else if (returnToUrl) {
-      redirectUrl = returnToUrl;
-    } else if (configuredUrl) {
-      redirectUrl = configuredUrl;
-    }
-
-    if (!redirectUrl) {
-      const proto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "https")
-        .split(",")[0]
-        .trim();
-      const host = String(req?.headers?.["x-forwarded-host"] || req?.get?.("host") || "").trim();
-      redirectUrl = host ? new URL(`${proto}://${host}`) : new URL("https://example.invalid");
-    }
-
-    redirectUrl.search = "";
-    redirectUrl.hash = "";
-
-    const basePath = String(redirectUrl.pathname || "/").replace(/\/?$/, "/");
-    const base = `${redirectUrl.origin}${basePath}`;
-    res.redirect(`${base}?login=success`);
+    void logEvent({ type: "oauth_success" });
+    res.redirect(buildFrontendRedirectUrl(req, req.query.state));
   } catch (err) {
     console.error(err);
     void logEvent({
@@ -523,25 +395,80 @@ export async function handleAuthCallback(req, res) {
 }
 
 export async function handleAuthMe(req, res) {
-  const tokens = getTokens(req);
-  const loggedIn = Boolean(tokens?.access_token) || Boolean(tokens?.refresh_token);
-  const user = await getAuthUserOrNull(req, res);
+  setAuthNoStore(res);
+  const session = await getSessionFromRequest(req);
+  const tokens = hasUsableTokens(session?.tokens) ? session.tokens : null;
+  const user = await getAuthUserOrNull(req);
+  console.log("[auth] me", {
+    cookieSessionId: sessionPrefix(getSessionCookieValue(req)),
+    found: Boolean(session),
+    hasUser: Boolean(user?.sub),
+    hasRefreshToken: Boolean(tokens?.refresh_token),
+    hasAccessToken: Boolean(tokens?.access_token),
+  });
+
   return res.json({
-    loggedIn,
+    loggedIn: Boolean(tokens),
     hasRefreshToken: Boolean(tokens?.refresh_token),
     hasAccessToken: Boolean(tokens?.access_token),
     expiryDate: tokens?.expiry_date ?? null,
     user: user
       ? {
-          sub: String(user?.sub || ""),
-          email: String(user?.email || ""),
-          name: String(user?.name || ""),
+          sub: String(user.sub || ""),
+          email: String(user.email || ""),
+          name: String(user.name || ""),
         }
       : null,
   });
 }
 
+async function authDebugHandler(req, res) {
+  setAuthNoStore(res);
+  const cookies = parseCookies(req);
+  const sessionId = getSessionCookieValue(req);
+  const session = sessionId ? await getSession(sessionId) : null;
+  const forwardedProto = String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "")
+    .split(",")[0]
+    .trim();
+  const forwardedHost = String(req?.headers?.["x-forwarded-host"] || req?.get?.("host") || "").trim();
+  res.json({
+    hasSessionCookie: Boolean(sessionId),
+    hasLegacyTokensCookie: Boolean(cookies?.[LEGACY_TOKENS_COOKIE_NAME]),
+    hasLegacyUserCookie: Boolean(cookies?.[LEGACY_USER_COOKIE_NAME]),
+    sessionIdPrefix: sessionId ? sessionId.slice(0, 8) : "",
+    sessionFound: Boolean(session),
+    sessionHasUser: Boolean(session?.user?.sub),
+    sessionHasRefreshToken: Boolean(session?.tokens?.refresh_token),
+    sessionHasAccessToken: Boolean(session?.tokens?.access_token),
+    forwardedProto,
+    forwardedHost,
+    configuredRedirectUri: getOAuthRedirectUri(),
+    _path: req.path,
+    _url: req.url,
+    _originalUrl: req.originalUrl,
+  });
+}
+
+function authDebugSetCookieHandler(req, res) {
+  setAuthNoStore(res);
+  const requestedSessionId = String(req.query.sessionId || "debug-session").trim() || "debug-session";
+  setSessionCookie(req, res, requestedSessionId);
+  res.json({
+    ok: true,
+    sessionIdPrefix: requestedSessionId.slice(0, 8),
+    forwardedProto: String(req?.headers?.["x-forwarded-proto"] || req?.protocol || "")
+      .split(",")[0]
+      .trim(),
+    forwardedHost: String(req?.headers?.["x-forwarded-host"] || req?.get?.("host") || "").trim(),
+    cookieAttrs: cookieAttrs(req),
+  });
+}
+
 export function mountAuthRoutes(app) {
+  app.get("/auth/debug", authDebugHandler);
+  app.get("/api/auth/debug", authDebugHandler);
+  app.get("/auth/debug/set-cookie", authDebugSetCookieHandler);
+  app.get("/api/auth/debug/set-cookie", authDebugSetCookieHandler);
   app.get("/auth/google", handleAuthGoogle);
   app.get("/api/auth/google", handleAuthGoogle);
   app.get("/auth/google/callback", handleAuthCallback);

@@ -14,10 +14,7 @@ export function getRuntime(): Runtime {
 /**
  * Returns API base for endpoints under `/api`.
  * - local: `${VITE_LOCAL_API_BASE}/api` (VITE_LOCAL_API_BASE is backend origin)
- * - prod:
- *   - if VITE_PROD_API_BASE ends with `/api` or equals `/api`, use it as-is (same-domain or full host)
- *   - else `${VITE_PROD_API_BASE}/api`
- *   - if unset, defaults to `/api`
+ * - prod: always use same-origin `/api`
  */
 export function getApiBase(): string {
   const runtime = getRuntime();
@@ -25,25 +22,20 @@ export function getApiBase(): string {
     const origin = normalizeBase(import.meta.env.VITE_LOCAL_API_BASE);
     return `${origin}/api`;
   }
-
-  const raw = normalizeBase(import.meta.env.VITE_PROD_API_BASE) || "/api";
-  if (raw === "/api" || raw.endsWith("/api")) return raw;
-  return `${raw}/api`;
+  return "/api";
 }
 
 /**
  * Returns backend base for non-API endpoints like `/auth/*`.
- * In prod, prefer routing auth through the same base as API so Vercel rewrites can handle it
- * (e.g. `/api/auth/*` when VITE_PROD_API_BASE is `/api`).
+ * In prod, auth always goes through same-origin `/api` so Hosting rewrites keep
+ * session cookies on the app host.
  */
 export function getAuthBase(): string {
   const runtime = getRuntime();
   if (runtime === "local") {
     return normalizeBase(import.meta.env.VITE_LOCAL_API_BASE);
   }
-
-  const raw = normalizeBase(import.meta.env.VITE_PROD_API_BASE) || "/api";
-  return raw;
+  return "/api";
 }
 
 function join(base: string, path: string): string {

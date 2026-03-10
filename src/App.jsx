@@ -8,10 +8,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { buildMuiTheme } from "./lib/muiTheme";
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("isLoggedIn") === "true";
-  });
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [logoutNoticeShown, setLogoutNoticeShown] = useState(false);
   const themeAppliedRef = useRef(false);
   const [appTheme, setAppTheme] = useState(() => {
@@ -22,6 +19,12 @@ export default function App() {
     return { accent: "#6b7280", scope: "sidebar" };
   });
 
+  const cacheLoginState = (loggedIn) => {
+    if (typeof window === "undefined") return;
+    if (loggedIn) window.localStorage.setItem("isLoggedIn", "true");
+    else window.localStorage.removeItem("isLoggedIn");
+  };
+
   const syncLoginStateFromServer = async ({ keepCurrentOnError = false } = {}) => {
     try {
       const res = await fetch(authUrl("/auth/me"), { credentials: "include" });
@@ -29,18 +32,12 @@ export default function App() {
       const data = await res.json().catch(() => ({}));
       const loggedIn = Boolean(data?.loggedIn);
       setIsLoggedIn(loggedIn);
-
-      if (typeof window !== "undefined") {
-        if (loggedIn) window.localStorage.setItem("isLoggedIn", "true");
-        else window.localStorage.removeItem("isLoggedIn");
-      }
+      cacheLoginState(loggedIn);
       return { ok: true, loggedIn };
     } catch {
       if (!keepCurrentOnError) {
         setIsLoggedIn(false);
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem("isLoggedIn");
-        }
+        cacheLoginState(false);
       }
       return { ok: false, loggedIn: null };
     }
@@ -48,25 +45,20 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const justLoggedIn = params.get("login") === "success";
-
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     const run = async () => {
-      if (justLoggedIn) {
-        setIsLoggedIn(true);
-        try {
-          window.localStorage.setItem("isLoggedIn", "true");
-        } catch {}
+      const params = new URLSearchParams(window.location.search);
+      const justLoggedIn = params.get("login") === "success";
 
+      if (justLoggedIn) {
         try {
           const u = new URL(window.location.href);
           u.searchParams.delete("login");
           window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
         } catch {}
 
-        for (let i = 0; i < 3; i += 1) {
+        for (let i = 0; i < 4; i += 1) {
           const r = await syncLoginStateFromServer({ keepCurrentOnError: true });
           if (r.ok && r.loggedIn === true) return;
           await sleep(350 * 2 ** i);
@@ -163,42 +155,9 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-    const onPageShow = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const justLoggedIn = params.get("login") === "success";
-
-      if (justLoggedIn) {
-        setIsLoggedIn(true);
-        try {
-          window.localStorage.setItem("isLoggedIn", "true");
-        } catch {
-          // ignore
-        }
-
-        try {
-          const u = new URL(window.location.href);
-          u.searchParams.delete("login");
-          window.history.replaceState({}, "", `${u.pathname}${u.search}${u.hash}`);
-        } catch {
-          // ignore
-        }
-
-        for (let i = 0; i < 3; i += 1) {
-          const r = await syncLoginStateFromServer({ keepCurrentOnError: true });
-          if (r.ok && r.loggedIn === true) return;
-          await sleep(350 * 2 ** i);
-        }
-        await syncLoginStateFromServer({ keepCurrentOnError: false });
-        return;
-      }
-
-      // 通常復帰でも一度同期しておく
-      await syncLoginStateFromServer({ keepCurrentOnError: false });
+    const onPageShow = () => {
+      void syncLoginStateFromServer({ keepCurrentOnError: false });
     };
-
     window.addEventListener("pageshow", onPageShow);
     return () => window.removeEventListener("pageshow", onPageShow);
   }, []);
@@ -219,7 +178,7 @@ export default function App() {
     } finally {
       setIsLoggedIn(false);
       if (typeof window !== "undefined") {
-        window.localStorage.removeItem("isLoggedIn");
+        cacheLoginState(false);
         window.localStorage.removeItem("sangaku.selectedFormId");
       }
     }
@@ -240,14 +199,11 @@ export default function App() {
     const onUnauthorized = (ev) => {
       setLogoutNoticeShown(true);
 
-      const wasLoggedIn =
-        typeof window !== "undefined" && window.localStorage.getItem("isLoggedIn") === "true";
-
       setIsLoggedIn(false);
-      window.localStorage.removeItem("isLoggedIn");
+      cacheLoginState(false);
       window.localStorage.removeItem("sangaku.selectedFormId");
 
-      const fallback = wasLoggedIn
+      const fallback = isLoggedIn
         ? "ログイン状態が切れました。再ログインしてください。"
         : "ログインが必要です。";
       const msg = ev?.detail?.message || fallback;
@@ -258,7 +214,7 @@ export default function App() {
     return () => {
       window.removeEventListener("gformgen:unauthorized", onUnauthorized);
     };
-  }, [logoutNoticeShown]);
+  }, [isLoggedIn, logoutNoticeShown]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

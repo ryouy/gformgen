@@ -15,14 +15,15 @@ export const GOOGLE_CLIENT_SECRET_SECRET = defineSecret("GF_GOOGLE_CLIENT_SECRET
 export const CORS_ORIGIN_SECRET = defineSecret("GF_CORS_ORIGIN");
 export const FRONTEND_ORIGIN_SECRET = defineSecret("GF_FRONTEND_ORIGIN");
 export const OAUTH_REDIRECT_URI_SECRET = defineSecret("GF_OAUTH_REDIRECT_URI");
-export const SESSION_PASSWORD_SECRET = defineSecret("GF_SESSION_PASSWORD");
 
 export function readSecret(name, secretParam) {
+  const envValue = String(process.env[name] || "").trim();
+  if (envValue) return envValue;
   try {
     const v = secretParam?.value?.();
-    if (v) return v;
+    if (v) return String(v).trim();
   } catch {}
-  return process.env[name] || "";
+  return "";
 }
 
 export function readLegacyAwareSecret(gfKey, legacyKey, secretParam) {

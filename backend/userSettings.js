@@ -339,11 +339,11 @@ export async function upsertDefaultScheduleSettings({
 export function mountUserSettingsRoutes(app) {
   app.get("/api/user-settings/default-schedule", async (req, res) => {
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
-      const authUser = await getAuthUserOrNull(req, res);
+      const authUser = await getAuthUserOrNull(req);
       if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
       const drive = google.drive({ version: "v3", auth: authClient });
@@ -365,11 +365,11 @@ export function mountUserSettingsRoutes(app) {
 
   app.post("/api/user-settings/default-schedule", async (req, res) => {
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
-      const authUser = await getAuthUserOrNull(req, res);
+      const authUser = await getAuthUserOrNull(req);
       if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
       const weeksOffset =
@@ -417,11 +417,11 @@ export function mountUserSettingsRoutes(app) {
 
   app.get("/api/user-settings/theme", async (req, res) => {
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
-      const authUser = await getAuthUserOrNull(req, res);
+      const authUser = await getAuthUserOrNull(req);
       if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
       const drive = google.drive({ version: "v3", auth: authClient });
@@ -441,11 +441,11 @@ export function mountUserSettingsRoutes(app) {
 
   app.post("/api/user-settings/theme", async (req, res) => {
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
-      const authUser = await getAuthUserOrNull(req, res);
+      const authUser = await getAuthUserOrNull(req);
       if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
       const accent = normalizeHexColor(req?.body?.accent) || "";
@@ -478,11 +478,11 @@ export function mountUserSettingsRoutes(app) {
 
   app.get("/api/user-settings/form-defaults", async (req, res) => {
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
-      const authUser = await getAuthUserOrNull(req, res);
+      const authUser = await getAuthUserOrNull(req);
       if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
       const drive = google.drive({ version: "v3", auth: authClient });
@@ -504,11 +504,11 @@ export function mountUserSettingsRoutes(app) {
 
   app.post("/api/user-settings/form-defaults", async (req, res) => {
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
-      const authUser = await getAuthUserOrNull(req, res);
+      const authUser = await getAuthUserOrNull(req);
       if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
       const participantNameCount =
@@ -547,11 +547,11 @@ export function mountUserSettingsRoutes(app) {
 
   app.post("/api/user-settings/all", async (req, res) => {
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) return res.status(401).json({ error: "Not logged in" });
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
-      const authUser = await getAuthUserOrNull(req, res);
+      const authUser = await getAuthUserOrNull(req);
       if (!authUser?.sub) return res.status(401).json({ error: "Not logged in" });
 
       const body = req?.body || {};

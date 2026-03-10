@@ -40,7 +40,7 @@ import {
 export function mountFormsRoutes(app) {
   app.post("/api/forms/create", async (req, res) => {
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) {
         void logEvent({
           type: "forms_create_rejected",
@@ -49,9 +49,9 @@ export function mountFormsRoutes(app) {
         return res.status(401).json({ error: "Not logged in" });
       }
 
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
-      const authUser = await getAuthUserOrNull(req, res);
+      const authUser = await getAuthUserOrNull(req);
 
       const {
         title,
@@ -95,9 +95,8 @@ export function mountFormsRoutes(app) {
         .join("\n");
 
       const description = `
-${formTitle}
 
-平素より当協会の活動にご理解とご協力を賜り、誠にありがとうございます。
+日頃より当協会の事業にご理解とご協力を賜り、誠にありがとうございます。
 下記のとおり【${title}】を開催いたします。
 ご出欠につきまして、以下のフォームよりご回答くださるようお願い申し上げます。
 
@@ -147,8 +146,8 @@ ${meetingInfoLines}
               },
             },
           },
+          location: { index: 0 },
         },
-        location: { index: 0 },
       });
 
       requests.push({
@@ -162,8 +161,8 @@ ${meetingInfoLines}
               },
             },
           },
+          location: { index: 1 },
         },
-        location: { index: 1 },
       });
 
       const roleTitle = (i) =>
@@ -219,8 +218,8 @@ ${meetingInfoLines}
               },
             },
           },
+          location: { index: cursorIndex },
         },
-        location: { index: cursorIndex },
       });
 
       await forms.forms.batchUpdate({
@@ -272,7 +271,7 @@ ${meetingInfoLines}
     const { formId } = req.params;
 
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) {
         void logEvent({
           type: "forms_responses_list_rejected",
@@ -288,10 +287,10 @@ ${meetingInfoLines}
         mode: "raw",
       });
 
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
       const drive = google.drive({ version: "v3", auth: authClient });
-      const access = await enforceOwnerAccess({ req, res, drive, formId });
+      const access = await enforceOwnerAccess({ req, drive, formId });
       if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
       const forms = google.forms({ version: "v1", auth: authClient });
 
@@ -325,7 +324,7 @@ ${meetingInfoLines}
     const { formId } = req.params;
 
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) {
         void logEvent({
           type: "forms_responses_list_rejected",
@@ -341,10 +340,10 @@ ${meetingInfoLines}
         mode: "formatted",
       });
 
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
       const drive = google.drive({ version: "v3", auth: authClient });
-      const access = await enforceOwnerAccess({ req, res, drive, formId });
+      const access = await enforceOwnerAccess({ req, drive, formId });
       if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
       const forms = google.forms({ version: "v1", auth: authClient });
 
@@ -483,7 +482,7 @@ ${meetingInfoLines}
     const { formId } = req.params;
 
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) {
         void logEvent({
           type: "forms_summary_rejected",
@@ -494,10 +493,10 @@ ${meetingInfoLines}
       }
 
       void logEvent({ type: "forms_summary_requested", formId });
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
       const drive = google.drive({ version: "v3", auth: authClient });
-      const access = await enforceOwnerAccess({ req, res, drive, formId });
+      const access = await enforceOwnerAccess({ req, drive, formId });
       if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
       const forms = google.forms({ version: "v1", auth: authClient });
 
@@ -581,7 +580,7 @@ ${meetingInfoLines}
 
   app.get("/api/forms/list", async (req, res) => {
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) {
         void logEvent({
           type: "forms_list_rejected",
@@ -592,9 +591,9 @@ ${meetingInfoLines}
 
       void logEvent({ type: "forms_list_requested" });
 
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
-      const authUser = await getAuthUserOrNull(req, res);
+      const authUser = await getAuthUserOrNull(req);
       if (!authUser?.sub) {
         return res.status(401).json({ error: "Failed to determine logged-in user" });
       }
@@ -697,7 +696,7 @@ ${meetingInfoLines}
     const { formId } = req.params;
 
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) {
         void logEvent({
           type: "forms_info_rejected",
@@ -709,11 +708,11 @@ ${meetingInfoLines}
 
       void logEvent({ type: "forms_info_requested", formId });
 
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
       const forms = google.forms({ version: "v1", auth: authClient });
       const drive = google.drive({ version: "v3", auth: authClient });
-      const access = await enforceOwnerAccess({ req, res, drive, formId, requireApp: false });
+      const access = await enforceOwnerAccess({ req, drive, formId, requireApp: false });
       if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
 
       const result = await forms.forms.get({ formId });
@@ -801,7 +800,7 @@ ${meetingInfoLines}
   app.post("/api/forms/:formId/close", async (req, res) => {
     const { formId } = req.params;
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) {
         void logEvent({
           type: "forms_close_rejected",
@@ -812,12 +811,12 @@ ${meetingInfoLines}
       }
 
       void logEvent({ type: "forms_close_requested", formId });
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
 
       const forms = google.forms({ version: "v1", auth: authClient });
       const drive = google.drive({ version: "v3", auth: authClient });
-      const access = await enforceOwnerAccess({ req, res, drive, formId });
+      const access = await enforceOwnerAccess({ req, drive, formId });
       if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
 
       const driveFile = await drive.files.get({
@@ -843,7 +842,7 @@ ${meetingInfoLines}
           questionIdToTitleObj[String(qid)] = String(title);
         }
         if (Object.keys(questionIdToTitleObj).length > 0) {
-          const authUser = await getAuthUserOrNull(req, res);
+          const authUser = await getAuthUserOrNull(req);
           await upsertFormSnapshot({
             drive,
             authUser,
@@ -931,7 +930,7 @@ ${meetingInfoLines}
   app.post("/api/forms/:formId/trash", async (req, res) => {
     const { formId } = req.params;
     try {
-      const savedTokens = getTokens(req);
+      const savedTokens = await getTokens(req);
       if (!savedTokens) {
         void logEvent({
           type: "forms_trash_rejected",
@@ -942,10 +941,10 @@ ${meetingInfoLines}
       }
 
       void logEvent({ type: "forms_trash_requested", formId });
-      const authClient = makeAuthedOAuthClientOrNull(req);
+      const authClient = await makeAuthedOAuthClientOrNull(req);
       if (!authClient) return res.status(401).json({ error: "Not logged in" });
       const drive = google.drive({ version: "v3", auth: authClient });
-      const access = await enforceOwnerAccess({ req, res, drive, formId });
+      const access = await enforceOwnerAccess({ req, drive, formId });
       if (!access.ok) return res.status(access.status || 403).json({ error: access.error });
 
       await drive.files.update({

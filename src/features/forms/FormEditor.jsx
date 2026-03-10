@@ -210,14 +210,17 @@ export default function FormEditor({
         );
         throw new Error("Not logged in");
       }
-      if (!res.ok) throw new Error("API error");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(String(data?.error || "API error"));
+      }
 
       const data = await res.json();
       setFormUrl(data.formUrl);
       onFormCreated?.({ formId: data.formId, formUrl: data.formUrl });
     } catch (e) {
       console.error(e);
-      setError("フォーム作成に失敗しました");
+      setError(e?.message ? `フォーム作成に失敗しました: ${e.message}` : "フォーム作成に失敗しました");
     } finally {
       setLoading(false);
     }

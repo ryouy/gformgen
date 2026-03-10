@@ -138,7 +138,7 @@ GF_GOOGLE_CLIENT_ID=...
 GF_GOOGLE_CLIENT_SECRET=...
 GF_FRONTEND_ORIGIN=http://localhost:5173
 GF_CORS_ORIGIN=http://localhost:5173
-GF_SESSION_PASSWORD=32文字以上のランダム文字列を推奨
+GF_OAUTH_REDIRECT_URI=http://localhost:3000/auth/google/callback
 ```
 
 ### 起動
@@ -152,15 +152,9 @@ cd .. && npm run dev
 
 ## セッション管理
 
-### `GF_SESSION_PASSWORD` を設定した場合
-
-* 暗号化された HttpOnly Cookie に保存
-* サーバーレス環境でも永続化可能
-
-### 未設定の場合
-
-* トークンはメモリ保持のみ
-* コールドスタート時は再ログインが必要
+* ブラウザ Cookie には短いセッション ID のみを保存
+* OAuth トークンはサーバー側セッションストアに保存
+* `GF_OAUTH_REDIRECT_URI` は固定値で運用する
 
 ---
 
@@ -171,7 +165,7 @@ cd .. && npm run dev
 
 * Hosting → `dist/`
 * Functions → `backend/index.js`
-* `/api/**`, `/auth/**` → Functions へリライト
+* `/api/**` → Functions へリライト
 
 ### シークレット設定（推奨）
 
@@ -181,7 +175,6 @@ firebase functions:secrets:set GF_GOOGLE_CLIENT_SECRET
 firebase functions:secrets:set GF_FRONTEND_ORIGIN
 firebase functions:secrets:set GF_OAUTH_REDIRECT_URI
 firebase functions:secrets:set GF_CORS_ORIGIN
-firebase functions:secrets:set GF_SESSION_PASSWORD
 ```
 
 ### デプロイ

@@ -11,7 +11,6 @@ import {
   CORS_ORIGIN_SECRET,
   FRONTEND_ORIGIN_SECRET,
   OAUTH_REDIRECT_URI_SECRET,
-  SESSION_PASSWORD_SECRET,
 } from "./config.js";
 import {
   mountAuthRoutes,
@@ -22,6 +21,13 @@ import { mountFormsRoutes } from "./forms.js";
 
 const app = express();
 app.set("trust proxy", 1);
+app.set("etag", false);
+
+function setNoStore(res) {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+}
 
 app.use(cors(getCorsOptions()));
 app.use(express.json());
@@ -39,14 +45,16 @@ if (process.env.ENABLE_LOG_API === "true") {
   });
 }
 
-app.post("/auth/logout", (req, res) => {
-  void clearTokens(req, res);
+app.post("/auth/logout", async (req, res) => {
+  setNoStore(res);
+  await clearTokens(req, res);
   void logEvent({ type: "logout" });
   res.json({ success: true });
 });
 
-app.post("/api/auth/logout", (req, res) => {
-  void clearTokens(req, res);
+app.post("/api/auth/logout", async (req, res) => {
+  setNoStore(res);
+  await clearTokens(req, res);
   void logEvent({ type: "logout" });
   res.json({ success: true });
 });
@@ -76,7 +84,6 @@ export const api = onRequest(
       CORS_ORIGIN_SECRET,
       FRONTEND_ORIGIN_SECRET,
       OAUTH_REDIRECT_URI_SECRET,
-      SESSION_PASSWORD_SECRET,
     ],
   },
   app

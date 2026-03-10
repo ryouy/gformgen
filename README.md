@@ -89,7 +89,7 @@ GF_GOOGLE_CLIENT_ID=...
 GF_GOOGLE_CLIENT_SECRET=...
 GF_FRONTEND_ORIGIN=http://localhost:5173
 GF_CORS_ORIGIN=http://localhost:5173
-GF_SESSION_PASSWORD=please_set_a_long_random_string_here_32chars_min
+GF_OAUTH_REDIRECT_URI=http://localhost:3000/auth/google/callback
 ```
 
 Start servers:
@@ -103,8 +103,9 @@ cd .. && npm run dev
 
 ## Notes
 
-  * Recommended: set `GF_SESSION_PASSWORD` to enable encrypted HttpOnly cookie persistence (serverless-friendly)
-  * Fallback: tokens may be kept in memory (cold start / instance swap ⇒ re-login required)
+  * OAuth uses a fixed redirect URI from `GF_OAUTH_REDIRECT_URI`
+  * Browser cookies store only a short session id
+  * OAuth tokens are kept server-side in the session store
 
 ---
 
@@ -114,7 +115,7 @@ This repo includes Firebase configuration (`firebase.json`):
 
 * Hosting: serves Vite `dist/`
 * Functions: exposes `backend/index.js` as `api`
-* Rewrites: `/api/**` and `/auth/**` → Functions
+* Rewrites: `/api/**` → Functions
 
 Secrets (recommended):
 
@@ -124,7 +125,6 @@ firebase functions:secrets:set GF_GOOGLE_CLIENT_SECRET
 firebase functions:secrets:set GF_FRONTEND_ORIGIN
 firebase functions:secrets:set GF_OAUTH_REDIRECT_URI
 firebase functions:secrets:set GF_CORS_ORIGIN
-firebase functions:secrets:set GF_SESSION_PASSWORD
 ```
 
 Deploy:
