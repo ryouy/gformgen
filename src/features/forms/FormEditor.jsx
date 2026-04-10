@@ -271,7 +271,7 @@ export default function FormEditor({
       );
     } catch (e) {
       console.error(e);
-      setError("QRコードのPNGダウンロードに失敗しました");
+      setError("二次元バーコードのPNGダウンロードに失敗しました");
     }
   };
 
@@ -448,7 +448,7 @@ export default function FormEditor({
                   mb: 1.5,
                 }}
               >
-                <strong>回答用QR</strong>
+                <strong>回答用二次元バーコード</strong>
               </Box>
 
               <Box
@@ -480,7 +480,7 @@ export default function FormEditor({
                         fgColor={QR_DARK_COLOR}
                         level={qrLevel}
                         marginSize={QR_MARGIN_SIZE}
-                        title="フォーム回答用QRコード"
+                        title="フォーム回答用二次元バーコード"
                         style={buildQrCanvasStyle(120)}
                       />
                     ) : (
@@ -515,7 +515,7 @@ export default function FormEditor({
                     <TextField
                       select
                       size="small"
-                      label="QRの仕上がり"
+                      label="二次元バーコードの仕上がり"
                       value={qrLevel}
                       onChange={(e) => setQrLevel(normalizeQrErrorCorrectionLevel(e.target.value))}
                       fullWidth

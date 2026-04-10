@@ -241,7 +241,6 @@ export default function App({
             <AuthGate
               tab={authPromptFor || activeTab}
               onLogin={onLogin}
-              onGoSettings={() => navigateToTab("settings")}
             />
           ) : activeTab === "form" ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

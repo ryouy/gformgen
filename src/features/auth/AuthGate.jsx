@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Lock, LogIn } from "lucide-react";
 
-export default function AuthGate({ onLogin, onGoSettings }) {
+export default function AuthGate({ onLogin }) {
   return (
     <div className="auth-gate" role="region" aria-label="ログインが必要です">
       <motion.div
@@ -24,15 +24,6 @@ export default function AuthGate({ onLogin, onGoSettings }) {
             <LogIn size={18} />
             ログインする
           </button>
-          {onGoSettings && (
-            <button
-              type="button"
-              className="auth-gate-btn auth-gate-btn-secondary"
-              onClick={() => onGoSettings?.()}
-            >
-              設定を見る
-            </button>
-          )}
         </div>
 
         

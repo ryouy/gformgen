@@ -49,7 +49,7 @@ Google 側が唯一の正。
 ### 共有
 
 * フォームリンク生成
-* QR コード生成
+* 二次元バーコード（配布用）の表示・ダウンロード
 
 ### UI
 
@@ -107,7 +107,7 @@ Google 側が唯一の正。
 ### 補助ライブラリ
 
 * PDF: `jspdf`, `jspdf-autotable`
-* QR: `qrcode.react`
+* 二次元バーコード表示: `qrcode.react`
 
 ---
 

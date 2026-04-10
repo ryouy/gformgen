@@ -333,7 +333,7 @@ export default function StatsToolbar({
               >
                 <QrCode size={18} />
               </button>
-              <span className="tooltip-bubble">{formUrl ? "二次元バーコードを表示" : "QR準備中…"}</span>
+              <span className="tooltip-bubble">{formUrl ? "二次元バーコードを表示" : "二次元バーコード準備中…"}</span>
             </span>
           </div>
         ) : (

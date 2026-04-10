@@ -4,7 +4,7 @@ export const QR_ERROR_CORRECTION_LEVEL = "M";
 export const QR_DARK_COLOR = "#000000";
 export const QR_LIGHT_COLOR = "#FFFFFF";
 export const QR_ERROR_CORRECTION_OPTIONS = [
-  { value: "M", label: "シンプル", description: "できるだけQRを単純にします。" },
+  { value: "M", label: "シンプル", description: "できるだけ二次元バーコードを単純にします。" },
   { value: "Q", label: "安定", description: "読み取りやすさを少し重視します。" },
 ];
 

@@ -27,7 +27,7 @@ Treat Google Drive as the database. Everything else is just a view.
 * Switch between multiple forms without persistence
 * Export attendee lists as **PDF**
 * Export responses as **CSV** (Excel-friendly; multi-person fields use **cell-internal newlines**)
-* Share forms via **link** or **QR code**
+* Share forms via **link** or **2D barcode** (for distribution)
 * “Close” forms at the **app level** (moves to a closed list)
 * “Trash” forms (moves to Google Drive trash)
 * Responsive UI (mobile / desktop)
@@ -59,7 +59,7 @@ Treat Google Drive as the database. Everything else is just a view.
   * Forms API
   * Drive API
 * PDF: `jspdf`, `jspdf-autotable`
-* QR: `qrcode.react`
+* 2D barcode display: `qrcode.react`
 
 ---
 
