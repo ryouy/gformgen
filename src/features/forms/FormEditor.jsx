@@ -7,13 +7,37 @@ import DateTimeInput from "./DateTimeInput";
 import EndDateTimeInput from "./EndDateTimeInput";
 import DeadDateTimeInput from "./DeadDateTimeInput";
 import { apiUrl } from "../../lib/apiBase";
+import {
+  buildQrCanvasStyle,
+  buildQrDownloadFileName,
+  downloadQrCanvasAsPng,
+  getQrErrorCorrectionOption,
+  QR_DARK_COLOR,
+  QR_ERROR_CORRECTION_LEVEL,
+  QR_ERROR_CORRECTION_OPTIONS,
+  QR_LIGHT_COLOR,
+  QR_MARGIN_SIZE,
+  QR_PNG_SIZE,
+  normalizeQrErrorCorrectionLevel,
+} from "../../lib/qrCode";
+import { copyTextToClipboard } from "../../lib/clipboard";
 
 export default function FormEditor({
   onFormCreated,
 }) {
   const dirtyRef = useRef(false);
   const participantDirtyRef = useRef(false);
+  const qrCanvasRef = useRef(null);
   const [hasEditedPrice, setHasEditedPrice] = useState(false);
+  const [copyNotice, setCopyNotice] = useState("");
+  const [qrLevel, setQrLevel] = useState(() => {
+    try {
+      return normalizeQrErrorCorrectionLevel(window.localStorage.getItem("gformgen.qrLevel"));
+    } catch {
+      return QR_ERROR_CORRECTION_LEVEL;
+    }
+  });
+  const activeQrOption = getQrErrorCorrectionOption(qrLevel);
 
   const buildEndDateTime = (start, endHour, endMinute) => {
     const h = Number(endHour);
@@ -176,10 +200,23 @@ export default function FormEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("gformgen.qrLevel", qrLevel);
+    } catch {
+      // ignore
+    }
+  }, [qrLevel]);
+
+  useEffect(() => {
+    setCopyNotice("");
+  }, [formUrl]);
+
   const handleCreate = async () => {
     setLoading(true);
     setError(null);
     setFormUrl(null);
+    setCopyNotice("");
     onFormCreated?.({ formId: null });
 
     try {
@@ -226,157 +263,354 @@ export default function FormEditor({
     }
   };
 
+  const handleDownloadQr = () => {
+    try {
+      downloadQrCanvasAsPng(
+        qrCanvasRef.current,
+        buildQrDownloadFileName(`${formData.title || "form"}-qr`)
+      );
+    } catch (e) {
+      console.error(e);
+      setError("QRコードのPNGダウンロードに失敗しました");
+    }
+  };
+
+  const handleCopyFormUrl = async () => {
+    if (!formUrl) return;
+    try {
+      await copyTextToClipboard(formUrl);
+      setCopyNotice("短縮リンクをコピーしました");
+    } catch (e) {
+      console.error(e);
+      setError("短縮リンクのコピーに失敗しました");
+    }
+  };
+
   return (
     <div className="form-grid-wrapper">
       <h2>情報を入力してください</h2>
 
       <div className="form-grid mui-form">
-        <Stack spacing={2}>
-          <TextField
-            label="会合名"
-            name="title"
-            value={formData.title}
-            onChange={handleChange}
-            fullWidth
-          />
-
-          <Box sx={{ display: "flex", gap: 2, flexDirection: { xs: "column", md: "row" } }}>
-            <DateTimeInput
-              value={formData.datetime}
-              onChange={handleDateTimeChange}
-            />
-            <EndDateTimeInput
-              value={formData.endDatetime}
-              onChange={(val) => {
-                if (!val) {
-                  setFormData({ ...formData, endDatetime: null });
-                  return;
-                }
-                const base = formData.datetime || formData.endDatetime || dayjs();
-                const nextEnd = base.hour(val.hour()).minute(val.minute()).second(0);
-                setFormData({ ...formData, endDatetime: nextEnd });
-              }}
-            />
-            <DeadDateTimeInput
-              value={formData.deadline}
-              onChange={(val) => setFormData({ ...formData, deadline: val })}
-            />
-          </Box>
-          {dateTimeValidationError && (
-            <p style={{ color: "red", margin: 0 }}>{dateTimeValidationError}</p>
-          )}
-
-          <TextField
-            label="場所"
-            name="place"
-            value={formData.place}
-            onChange={handleChange}
-            fullWidth
-          />
-          <TextField
-            label="参加費（1人あたり）"
-            name="price"
-            type="number"
-            value={!hasEditedPrice && Number(formData.price) <= 0 ? "" : formData.price}
-            onChange={handleChange}
-            fullWidth
-            inputProps={{ min: 0, step: 100, className: "no-spin" }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  {Number(formData.price) > 0 ? "￥" : "無料"}
-                </InputAdornment>
-              ),
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: "1fr",
+            gap: 2,
+            alignItems: "start",
+            maxWidth: 1080,
+            marginInline: "auto",
+          }}
+        >
+          <Stack
+            spacing={2}
+            sx={{
+              minWidth: 0,
+              p: { xs: 0, sm: 1.5 },
+              borderRadius: { sm: 3 },
+              background: { sm: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)" },
+              border: { sm: "1px solid rgba(148,163,184,0.18)" },
             }}
-            helperText={
-              Number(formData.price) <= 0
-                ? "無料の場合、フォーム本文には「参加費」は表示されません。"
-                : ""
-            }
-          />
-
-          <TextField
-            label="主催者名"
-            name="host"
-            value={formData.host}
-            onChange={handleChange}
-            fullWidth
-          />
-
-          <TextField
-            select
-            label="参加者の上限入力人数"
-            name="participantNameCount"
-            value={formData.participantNameCount}
-            onChange={handleChange}
-            fullWidth
           >
-            {[1, 2, 3, 4, 5].map((n) => (
-              <MenuItem key={n} value={n}>
-                {n} 人
-              </MenuItem>
-            ))}
-          </TextField>
+            <TextField
+              label="会合名"
+              name="title"
+              value={formData.title}
+              onChange={handleChange}
+              fullWidth
+            />
 
-          {error && (
-            <p style={{ color: "red", textAlign: "center" }}>{error}</p>
-          )}
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" },
+                gap: 2,
+              }}
+            >
+              <DateTimeInput
+                value={formData.datetime}
+                onChange={handleDateTimeChange}
+              />
+              <EndDateTimeInput
+                value={formData.endDatetime}
+                onChange={(val) => {
+                  if (!val) {
+                    setFormData({ ...formData, endDatetime: null });
+                    return;
+                  }
+                  const base = formData.datetime || formData.endDatetime || dayjs();
+                  const nextEnd = base.hour(val.hour()).minute(val.minute()).second(0);
+                  setFormData({ ...formData, endDatetime: nextEnd });
+                }}
+              />
+              <DeadDateTimeInput
+                value={formData.deadline}
+                onChange={(val) => setFormData({ ...formData, deadline: val })}
+              />
+            </Box>
 
-          {/* ✅ 画面下部：作成ボタン + QR + 確認ボタン（横並び） */}
-          <div className="form-bottom-bar">
-            <div className="form-bottom-actions">
-              <Button
-                variant="contained"
-                size="large"
-                onClick={handleCreate}
-                disabled={loading || Boolean(dateTimeValidationError)}
-                disableElevation
-                className="action-btn action-primary"
+            {dateTimeValidationError && (
+              <p style={{ color: "red", margin: 0 }}>{dateTimeValidationError}</p>
+            )}
+
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 2,
+              }}
+            >
+              <TextField
+                label="場所"
+                name="place"
+                value={formData.place}
+                onChange={handleChange}
+                fullWidth
+              />
+              <TextField
+                label="主催者名"
+                name="host"
+                value={formData.host}
+                onChange={handleChange}
+                fullWidth
+              />
+            </Box>
+
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 2,
+              }}
+            >
+              <TextField
+                label="参加費（1人あたり）"
+                name="price"
+                type="number"
+                value={!hasEditedPrice && Number(formData.price) <= 0 ? "" : formData.price}
+                onChange={handleChange}
+                fullWidth
+                inputProps={{ min: 0, step: 100, className: "no-spin" }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      {Number(formData.price) > 0 ? "￥" : "無料"}
+                    </InputAdornment>
+                  ),
+                }}
+                helperText={
+                  Number(formData.price) <= 0
+                    ? "無料の場合、フォーム本文には「参加費」は表示されません。"
+                    : ""
+                }
+              />
+              <TextField
+                select
+                label="参加者の上限入力人数"
+                name="participantNameCount"
+                value={formData.participantNameCount}
+                onChange={handleChange}
+                fullWidth
               >
-                {loading ? "作成中..." : "フォームを作成"}
-              </Button>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <MenuItem key={n} value={n}>
+                    {n} 人
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Box>
 
-              {formUrl ? (
-                <Button
-                  variant="outlined"
-                  size="large"
-                  component="a"
-                  href={formUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="action-btn action-secondary"
-                >
-                  フォームを確認
-                </Button>
-              ) : (
-                <Button
-                  variant="outlined"
-                  size="large"
-                  disabled
-                  className="action-btn action-secondary"
-                >
-                  フォームを確認
-                </Button>
-              )}
-            </div>
+            {error && (
+              <p style={{ color: "red", textAlign: "center", margin: 0 }}>{error}</p>
+            )}
+          </Stack>
 
-            <div className={`qr-inline ${formUrl ? "" : "is-placeholder"}`}>
-              {formUrl ? (
-                <QRCodeCanvas
-                  value={formUrl}
-                  size={95}
-                  bgColor="#ffffff"
-                  fgColor="#000000"
-                  level="Q"
-                />
-              ) : (
-                <div className="qr-placeholder" aria-hidden="true">
-                  <div className="qr-placeholder-text">バーコードが<br />表示されます</div>
-                </div>
-              )}
-            </div>
-          </div>
-        </Stack>
+          <Box
+            sx={{
+              minWidth: 0,
+            }}
+          >
+            <Box
+              sx={{
+                p: { xs: 2, sm: 2.25 },
+                borderRadius: 3,
+                border: "1px solid rgba(148,163,184,0.22)",
+                background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+                boxShadow: "0 12px 28px rgba(15,23,42,0.06)",
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 1,
+                  flexWrap: "wrap",
+                  mb: 1.5,
+                }}
+              >
+                <strong>回答用QR</strong>
+              </Box>
+
+              <Box
+                sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "1fr", sm: "136px minmax(240px, 1fr)" },
+                  gap: 2,
+                  alignItems: "center",
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    minHeight: 136,
+                    borderRadius: 2,
+                    border: "1px solid rgba(148,163,184,0.2)",
+                    background: "#fff",
+                  }}
+                >
+                  <div className={`qr-inline ${formUrl ? "" : "is-placeholder"}`}>
+                    {formUrl ? (
+                      <QRCodeCanvas
+                        ref={qrCanvasRef}
+                        value={formUrl}
+                        size={QR_PNG_SIZE}
+                        bgColor={QR_LIGHT_COLOR}
+                        fgColor={QR_DARK_COLOR}
+                        level={qrLevel}
+                        marginSize={QR_MARGIN_SIZE}
+                        title="フォーム回答用QRコード"
+                        style={buildQrCanvasStyle(120)}
+                      />
+                    ) : (
+                      <div className="qr-placeholder" aria-hidden="true">
+                        <div className="qr-placeholder-text">バーコードが<br />表示されます</div>
+                      </div>
+                    )}
+                  </div>
+                </Box>
+
+                <Stack spacing={1.1}>
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 1,
+                    }}
+                  >
+                    <Button
+                      variant="contained"
+                      size="large"
+                      onClick={handleCreate}
+                      disabled={loading || Boolean(dateTimeValidationError)}
+                      disableElevation
+                      className="action-btn action-primary"
+                      fullWidth
+                      sx={{ whiteSpace: "nowrap" }}
+                    >
+                      {loading ? "作成中..." : "フォームを作成"}
+                    </Button>
+
+                    <TextField
+                      select
+                      size="small"
+                      label="QRの仕上がり"
+                      value={qrLevel}
+                      onChange={(e) => setQrLevel(normalizeQrErrorCorrectionLevel(e.target.value))}
+                      fullWidth
+                      sx={{ "& .MuiInputBase-input": { whiteSpace: "nowrap" } }}
+                    >
+                      {QR_ERROR_CORRECTION_OPTIONS.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gap: 1,
+                    }}
+                  >
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      onClick={handleDownloadQr}
+                      className="action-btn action-secondary"
+                      disabled={!formUrl}
+                      fullWidth
+                      sx={{ whiteSpace: "nowrap" }}
+                    >
+                      PNGダウンロード
+                    </Button>
+
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      component="a"
+                      href={formUrl || undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="action-btn action-secondary"
+                      disabled={!formUrl}
+                      fullWidth
+                      sx={{ whiteSpace: "nowrap" }}
+                    >
+                      フォームを確認
+                    </Button>
+                  </Box>
+                </Stack>
+              </Box>
+
+              <Box
+                sx={{
+                  mt: 2,
+                  pt: 1.5,
+                  borderTop: "1px solid rgba(148,163,184,0.18)",
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 1,
+                    flexWrap: "wrap",
+                    mb: 1,
+                  }}
+                >
+                  <strong>短縮リンク</strong>
+                </Box>
+                <Box sx={{ display: "flex", gap: 1, flexDirection: { xs: "column", sm: "row" } }}>
+                  <TextField
+                    value={formUrl || ""}
+                    fullWidth
+                    size="small"
+                    placeholder="フォーム作成後に短縮リンクが表示されます"
+                    InputProps={{ readOnly: true }}
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={handleCopyFormUrl}
+                    sx={{ minWidth: 110 }}
+                    disabled={!formUrl}
+                  >
+                    コピー
+                  </Button>
+                </Box>
+                {copyNotice ? (
+                  <p style={{ margin: "0.65rem 0 0", color: "#475569", fontWeight: 700 }}>
+                    {copyNotice}
+                  </p>
+                ) : null}
+              </Box>
+            </Box>
+          </Box>
+        </Box>
       </div>
     </div>
   );

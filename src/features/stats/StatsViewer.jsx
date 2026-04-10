@@ -8,6 +8,10 @@ import StatsToolbar from "./components/StatsToolbar";
 import RemarksModal from "./components/RemarksModal";
 import QrModal from "./components/QrModal";
 import {
+  QR_ERROR_CORRECTION_LEVEL,
+  normalizeQrErrorCorrectionLevel,
+} from "../../lib/qrCode";
+import {
   formatDateYMD,
   formatPeopleMultiline,
 } from "./utils/formatters";
@@ -42,6 +46,13 @@ export default function StatsViewer({ initialFormId }) {
   const [remarksOpen, setRemarksOpen] = useState(false);
   const [formsError, setFormsError] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
+  const [qrLevel, setQrLevel] = useState(() => {
+    try {
+      return normalizeQrErrorCorrectionLevel(window.localStorage.getItem("gformgen.qrLevel"));
+    } catch {
+      return QR_ERROR_CORRECTION_LEVEL;
+    }
+  });
   const [emptyDelayDone, setEmptyDelayDone] = useState(false);
   const [recentFormIds, setRecentFormIds] = useState(() => {
     try {
@@ -260,6 +271,14 @@ export default function StatsViewer({ initialFormId }) {
       await fetchRows(nextId);
     })();
   }, [fetchForms, fetchFormInfo, fetchRows, fetchSummary, initialFormId, rememberRecentFormId]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("gformgen.qrLevel", qrLevel);
+    } catch {
+      // ignore
+    }
+  }, [qrLevel]);
 
   useEffect(() => {
     void prefetchSummaries(forms.map((f) => f.formId));
@@ -539,6 +558,7 @@ export default function StatsViewer({ initialFormId }) {
         onClose={() => setQrOpen(false)}
         selectedFormId={selectedFormId}
         formUrl={formUrl}
+        qrLevel={qrLevel}
       />
 
     </div>

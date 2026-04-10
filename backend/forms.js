@@ -6,6 +6,7 @@ import {
   APP_PROP_OWNER_SUB_KEY,
   APP_PROP_OWNER_EMAIL_KEY,
   APP_PROP_OWNER_NAME_KEY,
+  APP_PROP_SHORT_CODE_KEY,
   APP_PROP_STATUS_KEY,
   APP_PROP_STATUS_CLOSED,
   CLOSED_NOTICE_TITLE,
@@ -13,7 +14,7 @@ import {
   FORM_CLOSED_TAG,
 } from "./constants.js";
 import { buildClosedNoticeDescription, extractHostFromFormDescription } from "./constants.js";
-import { parseIntInRange, extractGoogleApiError } from "./utils.js";
+import { parseIntInRange, extractGoogleApiError, mergeAppProperties } from "./utils.js";
 import { ensureToolFolderId, moveFileIntoFolderIfNeeded } from "./drive.js";
 import {
   getTokens,
@@ -36,8 +37,71 @@ import {
   migrateFileToAppProperties,
   upsertFormSnapshot,
 } from "./formUtils.js";
+import {
+  buildShortUrl,
+  createShortLink,
+  getShortLink,
+  normalizeShortCode,
+  upsertShortLink,
+} from "./shortLinks.js";
+
+async function ensureShortCodeForForm({ drive, formId, responderUri, appProperties }) {
+  const normalizedFormId = String(formId || "").trim();
+  const targetUrl = String(responderUri || "").trim();
+  if (!normalizedFormId || !targetUrl) return "";
+
+  const currentProps = appProperties || {};
+  const existingCode = normalizeShortCode(currentProps?.[APP_PROP_SHORT_CODE_KEY]);
+  if (existingCode) {
+    await upsertShortLink(existingCode, { formId: normalizedFormId, targetUrl });
+    return existingCode;
+  }
+
+  const shortCode = await createShortLink({
+    formId: normalizedFormId,
+    targetUrl,
+  });
+  await drive.files.update({
+    fileId: normalizedFormId,
+    requestBody: {
+      appProperties: mergeAppProperties(currentProps, {
+        [APP_PROP_SHORT_CODE_KEY]: shortCode,
+      }),
+    },
+  });
+  return shortCode;
+}
 
 export function mountFormsRoutes(app) {
+  app.get(["/r/:code", "/R/:code"], async (req, res) => {
+    const shortCode = normalizeShortCode(req.params.code);
+    if (!shortCode) return res.status(404).send("Not found");
+
+    try {
+      const link = await getShortLink(shortCode);
+      const targetUrl = String(link?.targetUrl || "").trim();
+      if (!targetUrl) {
+        void logEvent({ type: "short_link_missing", shortCode });
+        return res.status(404).send("Not found");
+      }
+
+      void logEvent({
+        type: "short_link_redirected",
+        shortCode,
+        formId: link?.formId || "",
+      });
+      return res.redirect(302, targetUrl);
+    } catch (err) {
+      console.error(err);
+      void logEvent({
+        type: "short_link_failed",
+        shortCode,
+        message: err?.message || String(err),
+      });
+      return res.status(500).send("Internal Server Error");
+    }
+  });
+
   app.post("/api/forms/create", async (req, res) => {
     try {
       const savedTokens = await getTokens(req);
@@ -236,6 +300,23 @@ ${meetingInfoLines}
             ...(authUser?.name ? { [APP_PROP_OWNER_NAME_KEY]: String(authUser.name) } : {}),
           }
         : {};
+      const responderUri = String(created?.data?.responderUri || "").trim();
+      let shortCode = "";
+      let shortFormUrl = responderUri;
+      if (responderUri) {
+        try {
+          shortCode = await createShortLink({ formId, targetUrl: responderUri });
+          shortFormUrl = buildShortUrl(req, shortCode) || responderUri;
+        } catch (e) {
+          console.warn("short link create failed:", e?.message || String(e));
+          void logEvent({
+            type: "short_link_create_failed",
+            formId,
+            message: e?.message || String(e),
+          });
+        }
+      }
+
       await drive.files.update({
         fileId: formId,
         requestBody: {
@@ -243,17 +324,21 @@ ${meetingInfoLines}
           appProperties: {
             [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
             ...ownerProps,
+            ...(shortCode ? { [APP_PROP_SHORT_CODE_KEY]: shortCode } : {}),
           },
         },
       });
-
-      const responderUri = String(created?.data?.responderUri || "").trim();
 
       void logEvent({
         type: "forms_create_succeeded",
         formId,
       });
-      return res.json({ formId, formUrl: responderUri });
+      return res.json({
+        formId,
+        formUrl: shortFormUrl || responderUri,
+        directFormUrl: responderUri,
+        shortCode,
+      });
     } catch (err) {
       console.error(err);
       const { status, message } = extractGoogleApiError(err);
@@ -725,6 +810,7 @@ ${meetingInfoLines}
       });
       const driveName = driveFile?.data?.name || "";
       const appProps = driveFile?.data?.appProperties || {};
+      let nextAppProps = appProps;
 
       const currentTitle = String(info?.title || "");
       const nextTitle = stripTagsFromTitle(currentTitle);
@@ -740,7 +826,6 @@ ${meetingInfoLines}
         (currentName.includes(FORM_NAME_TAG) || currentName.includes(FORM_CLOSED_TAG)) ||
         String(appProps?.[APP_PROP_APP_KEY] || "") !== APP_PROP_APP_VALUE
       ) {
-        const { mergeAppProperties } = await import("./utils.js");
         try {
           if (nextTitle && nextTitle !== currentTitle) {
             await forms.forms.batchUpdate({
@@ -762,6 +847,7 @@ ${meetingInfoLines}
             [APP_PROP_APP_KEY]: APP_PROP_APP_VALUE,
             ...(inferredStatus ? { [APP_PROP_STATUS_KEY]: inferredStatus } : {}),
           });
+          nextAppProps = nextProps;
           await drive.files.update({
             fileId: formId,
             requestBody: {
@@ -777,12 +863,38 @@ ${meetingInfoLines}
       const acceptingResponses =
         byProps ?? parseAcceptingResponsesFromTitle(nextTitle || currentTitle);
       const titleToReturn = nextTitle || currentTitle || nextName || currentName;
+      let shortCode = normalizeShortCode(nextAppProps?.[APP_PROP_SHORT_CODE_KEY]);
+      let formUrl = responderUri;
+      if (responderUri) {
+        try {
+          if (!shortCode) {
+            shortCode = await ensureShortCodeForForm({
+              drive,
+              formId,
+              responderUri,
+              appProperties: nextAppProps,
+            });
+          } else {
+            await upsertShortLink(shortCode, { formId, targetUrl: responderUri });
+          }
+          formUrl = buildShortUrl(req, shortCode) || responderUri;
+        } catch (e) {
+          console.warn("short link ensure failed:", e?.message || String(e));
+          void logEvent({
+            type: "short_link_ensure_failed",
+            formId,
+            message: e?.message || String(e),
+          });
+        }
+      }
 
       void logEvent({ type: "forms_info_succeeded", formId });
       return res.json({
         formId,
         title: titleToReturn || "",
-        formUrl: responderUri,
+        formUrl,
+        directFormUrl: responderUri,
+        shortCode,
         editUrl,
         acceptingResponses,
       });

@@ -7,6 +7,7 @@ export const APP_PROP_STATUS_CLOSED = "closed";
 export const APP_PROP_OWNER_SUB_KEY = "gformgen_owner_sub";
 export const APP_PROP_OWNER_EMAIL_KEY = "gformgen_owner_email";
 export const APP_PROP_OWNER_NAME_KEY = "gformgen_owner_name";
+export const APP_PROP_SHORT_CODE_KEY = "gformgen_short_code";
 export const CLOSED_NOTICE_TITLE = "【回答受付終了】このフォームは締め切られています。";
 
 export const APP_PROP_TYPE_FORM_SNAPSHOT = "form_snapshot";

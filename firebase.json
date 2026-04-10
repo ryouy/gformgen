@@ -44,6 +44,14 @@
         "function": "api"
       },
       {
+        "source": "/r/**",
+        "function": "api"
+      },
+      {
+        "source": "/R/**",
+        "function": "api"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
