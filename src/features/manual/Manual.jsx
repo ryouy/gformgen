@@ -156,7 +156,7 @@ export default function ManualPage({ onOpenPdf }) {
             <div className="manual-note" style={{ marginTop: 10 }}>
               ※ 入力時に、<b>終了時刻は開始日時より後</b>、かつ <b>〆切日は開催日より前</b> でないと作成できません。
             </div>
-            <h5 style={{ margin: "12px 0 6px" }}>作成後にできること（右側のパネル）</h5>
+            <h5 style={{ margin: "12px 0 6px" }}>作成後にできること</h5>
             <ul style={{ marginTop: 8 }}>
               <li>
                 <b>フォームを確認</b> → 実際のGoogleフォームを別タブで開きます
