@@ -184,7 +184,7 @@ export default function ManualPage({ onOpenPdf }) {
               </li>
             </ul>
             <div className="manual-note" style={{ marginTop: 10 }}>
-              ※ 短縮URLは作成されません。参加者に共有する場合は、作成されたGoogleフォームのURLをそのままコピーして使います。
+              ※ 短縮URLは作成されません。参加者に共有する場合は、作成されたGoogleフォームのURLをコピーし、手動で短縮してから使います。
             </div>
             <div className="manual-note" style={{ marginTop: 8 }}>
               ※ 作成画面と集計画面では、二次元バーコードの「仕上がり」設定は同じ値が引き継がれます（ブラウザに記憶されます）。
