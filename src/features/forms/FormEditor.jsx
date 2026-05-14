@@ -489,7 +489,7 @@ export default function FormEditor({
                 </Button>
 
                 <TextField
-                  label="作成されたURL / QRにするURL"
+                  label="作成されたURL / QRにする短縮URL"
                   value={qrInputUrl}
                   onChange={(e) => setQrInputUrl(e.target.value)}
                   placeholder=""
