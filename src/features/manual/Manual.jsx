@@ -109,6 +109,14 @@ export default function ManualPage({ onOpenPdf }) {
             <ul style={{ marginTop: 8 }}>
               <li>
                 <b>会合名</b>（例：「産学懇話会 10月定例会」）
+                <div
+                  style={{
+                    color: "color-mix(in srgb, var(--app-text) 65%, transparent)",
+                    fontWeight: 800,
+                  }}
+                >
+                  既定値の「N月定例会」は、作成画面を開いた時点の来月の数字に自動で置き換わります
+                </div>
               </li>
               <li>
                 <b>開催日時（開始）</b>（会合の開始日時を入力します）
@@ -159,7 +167,10 @@ export default function ManualPage({ onOpenPdf }) {
             <h5 style={{ margin: "12px 0 6px" }}>作成後にできること</h5>
             <ul style={{ marginTop: 8 }}>
               <li>
-                <b>フォームを確認</b> → 実際のGoogleフォームを別タブで開きます
+                <b>フォームURL</b> → 「フォームを作成」を押すと、ボタンの右側に作成されたGoogleフォームのURLが表示されます。<b>コピー</b>ボタンでクリップボードにコピーでき、メールやチャットで参加者に送れます
+              </li>
+              <li>
+                <b>URLから二次元バーコードを作成</b> → 表示されたフォームURL、または貼り付けた任意のURLから二次元バーコードを作成します
               </li>
               <li>
                 <b>二次元バーコードの仕上がり</b>（プルダウン）→{" "}
@@ -169,10 +180,13 @@ export default function ManualPage({ onOpenPdf }) {
                 <b>PNGダウンロード</b> → 二次元バーコードを画像ファイルとして保存し、資料や掲示に貼り付けられます
               </li>
               <li>
-                <b>短縮リンク</b> → フォーム作成後に表示されるURLです。<b>コピー</b>ボタンでクリップボードにコピーでき、メールやチャットで参加者に送れます
+                <b>フォームを確認</b> → 実際のGoogleフォームを別タブで開きます
               </li>
             </ul>
             <div className="manual-note" style={{ marginTop: 10 }}>
+              ※ 短縮URLは作成されません。参加者に共有する場合は、作成されたGoogleフォームのURLをそのままコピーして使います。
+            </div>
+            <div className="manual-note" style={{ marginTop: 8 }}>
               ※ 作成画面と集計画面では、二次元バーコードの「仕上がり」設定は同じ値が引き継がれます（ブラウザに記憶されます）。
             </div>
           </>
@@ -214,7 +228,7 @@ export default function ManualPage({ onOpenPdf }) {
                 <b>ペンアイコン</b>：Googleフォーム編集画面を開きます
               </li>
               <li>
-                <b>二次元バーコードアイコン</b>：大きめの二次元バーコードを表示する画面が開きます。作成画面と同様に、<b>短縮リンクのコピー</b>と
+                <b>二次元バーコードアイコン</b>：大きめの二次元バーコードを表示する画面が開きます。作成画面と同様に、<b>フォームURLのコピー</b>と
                 <b>PNGダウンロード</b>ができます（会場で投影したり、紙に印刷して配布したりする用途向け）
               </li>
               <li>
@@ -310,7 +324,7 @@ export default function ManualPage({ onOpenPdf }) {
                 <b>ペンアイコン（フォームを編集）</b>：Googleフォームの編集画面を開きます（設問の修正時に使用）
               </li>
               <li>
-                <b>二次元バーコードアイコン</b>：二次元バーコードを表示します。モーダル内で短縮リンクのコピーやPNG保存もできます（会場で投影・印刷して配布）
+                <b>二次元バーコードアイコン</b>：二次元バーコードを表示します。モーダル内でフォームURLのコピーやPNG保存もできます（会場で投影・印刷して配布）
               </li>
             </ul>
           </>
@@ -469,6 +483,14 @@ export default function ManualPage({ onOpenPdf }) {
                 >
                   既定参加費を0にすると、作成画面の初期表示は「無料」になります
                 </div>
+                <div
+                  style={{
+                    color: "color-mix(in srgb, var(--app-text) 65%, transparent)",
+                    fontWeight: 800,
+                  }}
+                >
+                  会合名に「N月定例会」と入れておくと、Nが来月の数字に置き換わります
+                </div>
               </li>
               <li>
                 <b>テーマカラー</b>：アプリ全体のアクセント色（ボタンや選択状態の色）を変更できます。
@@ -601,5 +623,3 @@ export default function ManualPage({ onOpenPdf }) {
     </div>
   );
 }
-
-

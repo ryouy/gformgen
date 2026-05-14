@@ -11,7 +11,6 @@ import {
   buildQrCanvasStyle,
   buildQrDownloadFileName,
   downloadQrCanvasAsPng,
-  getQrErrorCorrectionOption,
   QR_DARK_COLOR,
   QR_ERROR_CORRECTION_LEVEL,
   QR_ERROR_CORRECTION_OPTIONS,
@@ -29,7 +28,8 @@ export default function FormEditor({
   const participantDirtyRef = useRef(false);
   const qrCanvasRef = useRef(null);
   const [hasEditedPrice, setHasEditedPrice] = useState(false);
-  const [copyNotice, setCopyNotice] = useState("");
+  const [qrInputUrl, setQrInputUrl] = useState("");
+  const [customQrUrl, setCustomQrUrl] = useState("");
   const [qrLevel, setQrLevel] = useState(() => {
     try {
       return normalizeQrErrorCorrectionLevel(window.localStorage.getItem("gformgen.qrLevel"));
@@ -37,7 +37,6 @@ export default function FormEditor({
       return QR_ERROR_CORRECTION_LEVEL;
     }
   });
-  const activeQrOption = getQrErrorCorrectionOption(qrLevel);
 
   const buildEndDateTime = (start, endHour, endMinute) => {
     const h = Number(endHour);
@@ -69,8 +68,15 @@ export default function FormEditor({
   };
 
   const buildDefaultMeetingTitle = () => {
+    return resolveDefaultMeetingTitle("会津産学懇話会 N月定例会");
+  };
+
+  const resolveDefaultMeetingTitle = (template) => {
     const nextMonth = dayjs().add(1, "month").format("M");
-    return `会津産学懇話会 ${nextMonth}月定例会`;
+    const raw = String(template || "").trim() || "会津産学懇話会 N月定例会";
+    return raw
+      .replace(/N月定例会/g, `${nextMonth}月定例会`)
+      .replace(/([ \u3000])月定例会/g, `$1${nextMonth}月定例会`);
   };
 
   const initialSchedule = buildDefaultSchedule();
@@ -182,7 +188,7 @@ export default function FormEditor({
             const host = String(s?.defaultHost || "").trim();
             setFormData((prev) => ({
               ...prev,
-              title: t || prev.title,
+              title: resolveDefaultMeetingTitle(t || prev.title),
               place: place || prev.place,
               host: host || prev.host,
               participantNameCount: n,
@@ -191,6 +197,7 @@ export default function FormEditor({
           }
         }
       } catch {
+        // Keep the built-in defaults when saved settings cannot be read.
       }
     };
     void run();
@@ -208,15 +215,10 @@ export default function FormEditor({
     }
   }, [qrLevel]);
 
-  useEffect(() => {
-    setCopyNotice("");
-  }, [formUrl]);
-
   const handleCreate = async () => {
     setLoading(true);
     setError(null);
     setFormUrl(null);
-    setCopyNotice("");
     onFormCreated?.({ formId: null });
 
     try {
@@ -254,6 +256,8 @@ export default function FormEditor({
 
       const data = await res.json();
       setFormUrl(data.formUrl);
+      setQrInputUrl(data.formUrl || "");
+      setCustomQrUrl("");
       onFormCreated?.({ formId: data.formId, formUrl: data.formUrl });
     } catch (e) {
       console.error(e);
@@ -264,10 +268,12 @@ export default function FormEditor({
   };
 
   const handleDownloadQr = () => {
+    const qrUrl = customQrUrl.trim() || formUrl;
+    if (!qrUrl) return;
     try {
       downloadQrCanvasAsPng(
         qrCanvasRef.current,
-        buildQrDownloadFileName(`${formData.title || "form"}-qr`)
+        buildQrDownloadFileName(`${customQrUrl.trim() ? "url" : formData.title || "form"}-qr`)
       );
     } catch (e) {
       console.error(e);
@@ -276,15 +282,23 @@ export default function FormEditor({
   };
 
   const handleCopyFormUrl = async () => {
-    if (!formUrl) return;
+    const value = qrInputUrl.trim();
+    if (!value) return;
     try {
-      await copyTextToClipboard(formUrl);
-      setCopyNotice("短縮リンクをコピーしました");
+      await copyTextToClipboard(value);
     } catch (e) {
       console.error(e);
-      setError("短縮リンクのコピーに失敗しました");
+      setError("URLのコピーに失敗しました");
     }
   };
+
+  const handleCreateQrFromUrl = () => {
+    const nextUrl = qrInputUrl.trim();
+    if (!nextUrl) return;
+    setCustomQrUrl(nextUrl);
+  };
+
+  const currentQrUrl = customQrUrl.trim() || formUrl;
 
   return (
     <div className="form-grid-wrapper">
@@ -454,6 +468,56 @@ export default function FormEditor({
               <Box
                 sx={{
                   display: "grid",
+                  gridTemplateColumns: { xs: "1fr", md: "220px minmax(180px, 420px) 110px" },
+                  gap: 1,
+                  alignItems: "center",
+                  justifyContent: "start",
+                  mb: 2,
+                }}
+              >
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={handleCreate}
+                  disabled={loading || Boolean(dateTimeValidationError)}
+                  disableElevation
+                  className="action-btn action-primary"
+                  fullWidth
+                  sx={{ whiteSpace: "nowrap" }}
+                >
+                  {loading ? "作成中..." : "フォームを作成"}
+                </Button>
+
+                <TextField
+                  label="作成されたURL / QRにするURL"
+                  value={qrInputUrl}
+                  onChange={(e) => setQrInputUrl(e.target.value)}
+                  placeholder=""
+                  fullWidth
+                  size="small"
+                  sx={{
+                    maxWidth: { md: 420 },
+                    "& .MuiInputBase-input": {
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    },
+                  }}
+                />
+
+                <Button
+                  variant="outlined"
+                  onClick={handleCopyFormUrl}
+                  sx={{ minWidth: 110 }}
+                  disabled={!qrInputUrl.trim()}
+                >
+                  コピー
+                </Button>
+              </Box>
+
+              <Box
+                sx={{
+                  display: "grid",
                   gridTemplateColumns: { xs: "1fr", sm: "136px minmax(240px, 1fr)" },
                   gap: 2,
                   alignItems: "center",
@@ -470,11 +534,11 @@ export default function FormEditor({
                     background: "#fff",
                   }}
                 >
-                  <div className={`qr-inline ${formUrl ? "" : "is-placeholder"}`}>
-                    {formUrl ? (
+                  <div className={`qr-inline ${currentQrUrl ? "" : "is-placeholder"}`}>
+                    {currentQrUrl ? (
                       <QRCodeCanvas
                         ref={qrCanvasRef}
-                        value={formUrl}
+                        value={currentQrUrl}
                         size={QR_PNG_SIZE}
                         bgColor={QR_LIGHT_COLOR}
                         fgColor={QR_DARK_COLOR}
@@ -495,21 +559,20 @@ export default function FormEditor({
                   <Box
                     sx={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
                       gap: 1,
                     }}
                   >
                     <Button
-                      variant="contained"
+                      variant="outlined"
                       size="large"
-                      onClick={handleCreate}
-                      disabled={loading || Boolean(dateTimeValidationError)}
-                      disableElevation
-                      className="action-btn action-primary"
+                      onClick={handleCreateQrFromUrl}
+                      disabled={!qrInputUrl.trim()}
+                      className="action-btn action-secondary"
                       fullWidth
-                      sx={{ whiteSpace: "nowrap" }}
+                      sx={{ whiteSpace: "normal", lineHeight: 1.25, minHeight: 48 }}
                     >
-                      {loading ? "作成中..." : "フォームを作成"}
+                      URLから二次元バーコードを作成
                     </Button>
 
                     <TextField
@@ -532,7 +595,7 @@ export default function FormEditor({
                   <Box
                     sx={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                      gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
                       gap: 1,
                     }}
                   >
@@ -541,7 +604,7 @@ export default function FormEditor({
                       size="large"
                       onClick={handleDownloadQr}
                       className="action-btn action-secondary"
-                      disabled={!formUrl}
+                      disabled={!currentQrUrl}
                       fullWidth
                       sx={{ whiteSpace: "nowrap" }}
                     >
@@ -552,11 +615,11 @@ export default function FormEditor({
                       variant="outlined"
                       size="large"
                       component="a"
-                      href={formUrl || undefined}
+                      href={currentQrUrl || undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="action-btn action-secondary"
-                      disabled={!formUrl}
+                      disabled={!currentQrUrl}
                       fullWidth
                       sx={{ whiteSpace: "nowrap" }}
                     >
@@ -564,49 +627,6 @@ export default function FormEditor({
                     </Button>
                   </Box>
                 </Stack>
-              </Box>
-
-              <Box
-                sx={{
-                  mt: 2,
-                  pt: 1.5,
-                  borderTop: "1px solid rgba(148,163,184,0.18)",
-                }}
-              >
-                <Box
-                  sx={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 1,
-                    flexWrap: "wrap",
-                    mb: 1,
-                  }}
-                >
-                  <strong>短縮リンク</strong>
-                </Box>
-                <Box sx={{ display: "flex", gap: 1, flexDirection: { xs: "column", sm: "row" } }}>
-                  <TextField
-                    value={formUrl || ""}
-                    fullWidth
-                    size="small"
-                    placeholder="フォーム作成後に短縮リンクが表示されます"
-                    InputProps={{ readOnly: true }}
-                  />
-                  <Button
-                    variant="outlined"
-                    onClick={handleCopyFormUrl}
-                    sx={{ minWidth: 110 }}
-                    disabled={!formUrl}
-                  >
-                    コピー
-                  </Button>
-                </Box>
-                {copyNotice ? (
-                  <p style={{ margin: "0.65rem 0 0", color: "#475569", fontWeight: 700 }}>
-                    {copyNotice}
-                  </p>
-                ) : null}
               </Box>
             </Box>
           </Box>

@@ -67,7 +67,7 @@ export default function SettingsPage() {
 
   const [participantNameCount, setParticipantNameCount] = useState(1);
   const [defaultPrice, setDefaultPrice] = useState(0);
-  const [defaultMeetingTitle, setDefaultMeetingTitle] = useState("会津産学懇話会 月定例会");
+  const [defaultMeetingTitle, setDefaultMeetingTitle] = useState("会津産学懇話会 N月定例会");
   const [defaultPlace, setDefaultPlace] = useState("会津若松ワシントンホテル");
   const [defaultHost, setDefaultHost] = useState("会津産学懇話会");
 
@@ -135,7 +135,7 @@ export default function SettingsPage() {
           const s = data?.settings || {};
           setParticipantNameCount(Number(s?.participantNameCount) || 1);
           setDefaultPrice(Number(s?.defaultPrice) || 0);
-          setDefaultMeetingTitle(String(s?.defaultMeetingTitle || "会津産学懇話会 月定例会"));
+          setDefaultMeetingTitle(String(s?.defaultMeetingTitle || "会津産学懇話会 N月定例会"));
           setDefaultPlace(String(s?.defaultPlace || "会津若松ワシントンホテル"));
           setDefaultHost(String(s?.defaultHost || "会津産学懇話会"));
         }
@@ -576,5 +576,4 @@ export default function SettingsPage() {
     </div>
   );
 }
-
 

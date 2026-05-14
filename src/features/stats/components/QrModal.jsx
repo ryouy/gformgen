@@ -32,7 +32,7 @@ export default function QrModal({ open, onClose, selectedFormId, formUrl, qrLeve
   const handleCopy = async () => {
     try {
       await copyTextToClipboard(formUrl);
-      setCopyNotice("短縮リンクをコピーしました");
+      setCopyNotice("フォームURLをコピーしました");
     } catch (err) {
       console.error(err);
       setCopyNotice("コピーに失敗しました");
@@ -108,7 +108,7 @@ export default function QrModal({ open, onClose, selectedFormId, formUrl, qrLeve
               fontWeight: 800,
             }}
           >
-            短縮リンク
+            フォームURL
           </div>
           <div
             style={{
@@ -167,5 +167,4 @@ export default function QrModal({ open, onClose, selectedFormId, formUrl, qrLeve
     </div>
   );
 }
-
 

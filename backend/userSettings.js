@@ -85,7 +85,7 @@ export function getFormDefaultsFromProps(appProperties) {
   const defaultPrice = parseIntInRange(props?.[APP_PROP_DEFAULT_PRICE_KEY], { min: 0, max: 99999999 }) ?? 0;
   const defaultMeetingTitle =
     String(props?.[APP_PROP_DEFAULT_MEETING_TITLE_KEY] || "").trim() ||
-    "会津産学懇話会 月定例会";
+    "会津産学懇話会 N月定例会";
   const defaultPlace =
     String(props?.[APP_PROP_DEFAULT_PLACE_KEY] || "").trim() || "会津若松ワシントンホテル";
   const defaultHost =
@@ -576,7 +576,7 @@ export function mountUserSettingsRoutes(app) {
         parseIntInRange(formDefaults.defaultPrice, { min: 0, max: 99999999 }) ?? 0;
       const defaultMeetingTitle =
         String(formDefaults.defaultMeetingTitle || "").trim().slice(0, 120) ||
-        "会津産学懇話会 月定例会";
+        "会津産学懇話会 N月定例会";
       const defaultPlace =
         String(formDefaults.defaultPlace || "").trim().slice(0, 120) ||
         "会津若松ワシントンホテル";
