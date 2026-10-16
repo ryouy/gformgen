@@ -92,12 +92,24 @@ GF_CORS_ORIGIN=http://localhost:5173
 GF_OAUTH_REDIRECT_URI=http://localhost:3000/auth/google/callback
 ```
 
-Start servers:
+Start the backend and frontend in **separate terminals** so both development servers remain running:
+
+Backend terminal (from the repository root):
 
 ```bash
-cd backend && npm run dev
-cd .. && npm run dev
+cd backend
+npm run dev
 ```
+
+Frontend terminal (from the repository root):
+
+```bash
+npm run dev
+```
+
+### Credentials and OAuth safety
+
+Never commit `backend/.env.local`, Google OAuth client secrets, or real access tokens. The OAuth redirect URI must match the URL configured in the Google Cloud OAuth client. Vite frontend environment variables are part of client-side builds and must not contain secrets.
 
 ---
 
